@@ -30,6 +30,12 @@ def _llm_route_or_fallback(processed: Dict, llm_client: LLMClient | None) -> tup
         route_result = route_question(processed)
         return apply_route_fallback(route_result, processed["passage"]), "", True
 
+    # Fast default for local inference: keep routing heuristic-only.
+    if os.getenv("LLM_USE_LLM_ROUTE", "").strip() != "1":
+        route_result = route_question(processed)
+        domain = apply_route_fallback(route_result, processed["passage"])
+        return domain, "", False
+
     try:
         raw_route = llm_client.chat(
             ROUTER_SYSTEM_PROMPT,
@@ -56,13 +62,18 @@ def _llm_answer_or_fallback(
         return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed), "", True
 
     try:
+        try:
+            answer_max_tokens = int(os.getenv("LLM_ANSWER_MAX_TOKENS", "64"))
+        except ValueError:
+            answer_max_tokens = 64
+        answer_max_tokens = max(16, min(answer_max_tokens, 256))
         domain_context = processed["passage"]
         if domain == "rag":
             domain_context = bm25_retrieve(processed["passage"], processed["question"])
         raw_answer = llm_client.chat(
             DOMAIN_SYSTEM_PROMPTS[domain],
             domain_user_prompt(domain, domain_context, processed["question"], processed["choices"]),
-            max_tokens=220 if domain in {"math", "should_correct"} else 120,
+            max_tokens=answer_max_tokens,
         )
         parsed = parse_answer(raw_answer, processed["num_choices"])
         if parsed and parsed != "NONE":

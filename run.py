@@ -96,6 +96,9 @@ def main() -> None:
             "LLM mode requires local model id via HF_MODEL_ID or LLM_MODEL "
             "(e.g. Qwen/Qwen3.5-4B) in environment or .env."
         )
+    if llm_client is not None and args.workers != 1:
+        print(f"LLM mode: overriding workers={args.workers} -> 1 for faster/stable local inference.")
+        args.workers = 1
 
     results = run_pipeline(items, max_workers=args.workers, llm_client=llm_client)
     write_output(args.output, results)

@@ -13,6 +13,11 @@ Các domain:
 - multi_domain: kết hợp nhiều lĩnh vực, cần tư duy tổng hợp
 - should_correct: yêu cầu xác định phát biểu đúng hay sai
 - ignore_answer: không có đáp án nào đúng trong các lựa chọn
+
+QUY TẮC BẮT BUỘC:
+- KHÔNG in reasoning/chain-of-thought/thinking process.
+- Chỉ in đúng 1 dòng JSON object.
+- Không in markdown, không code fence, không text nào ngoài JSON.
 """
 
 
@@ -21,7 +26,7 @@ def router_user_prompt(passage: str, question: str, num_choices: int) -> str:
         f"Passage (nếu có): {passage[:200]}\n"
         f"Câu hỏi: {question}\n"
         f"Số lượng đáp án: {num_choices}\n\n"
-        'Trả lời JSON: {"domain": "rag", "confidence": 0.95}'
+        'Trả lời đúng 1 dòng JSON: {"domain":"rag","confidence":0.95}'
     )
 
 
@@ -29,44 +34,52 @@ DOMAIN_SYSTEM_PROMPTS = {
     "rag": (
         "Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu tiếng Việt.\n"
         "Chỉ sử dụng thông tin trong phần context được cung cấp.\n"
-        "Chỉ trả về JSON hợp lệ, không giải thích ngoài JSON.\n"
+        "KHÔNG in reasoning/chain-of-thought/thinking process.\n"
+        "Chỉ trả về đúng 1 dòng JSON hợp lệ, không text nào ngoài JSON.\n"
         'Định dạng bắt buộc: {"answer":"A","reason":"...ngắn gọn..."}'
     ),
     "math": (
         "Bạn là chuyên gia toán học.\n"
-        "Hãy suy luận từng bước, tự kiểm tra lại kết quả trước khi kết luận.\n"
-        "Không cần trình bày dài dòng, nhưng phải chính xác.\n"
-        "Chỉ trả về JSON hợp lệ.\n"
+        "Tự suy luận nội bộ để chọn đáp án chính xác.\n"
+        "KHÔNG in reasoning/chain-of-thought/thinking process.\n"
+        "Chỉ trả về đúng 1 dòng JSON hợp lệ.\n"
         'Định dạng bắt buộc: {"answer":"A","reason":"..."}'
     ),
     "multi_domain": (
         "Bạn là trợ lý phân tích câu hỏi tổng hợp đa lĩnh vực tiếng Việt.\n"
-        "Hãy xác định trọng tâm câu hỏi, phân tích từng đáp án, loại trừ đáp án sai.\n"
-        "Chỉ trả về JSON hợp lệ.\n"
+        "Tự phân tích nội bộ và chọn đáp án tốt nhất.\n"
+        "KHÔNG in reasoning/chain-of-thought/thinking process.\n"
+        "Chỉ trả về đúng 1 dòng JSON hợp lệ.\n"
         'Định dạng bắt buộc: {"answer":"A","reason":"..."}'
     ),
     "should_correct": (
         "Bạn là chuyên gia kiểm tra tính đúng/sai của thông tin tiếng Việt.\n"
-        "Xác định phát biểu cần kiểm tra, đối chiếu và chọn đáp án chỉnh sửa đúng nhất.\n"
-        "Chỉ trả về JSON hợp lệ.\n"
+        "Tự đối chiếu nội bộ và chọn đáp án chỉnh sửa đúng nhất.\n"
+        "KHÔNG in reasoning/chain-of-thought/thinking process.\n"
+        "Chỉ trả về đúng 1 dòng JSON hợp lệ.\n"
         'Định dạng khuyến nghị: {"is_correct":false,"correction":"...","answer":"B"}'
     ),
     "ignore_answer": (
         "Bạn là trợ lý phát hiện câu bẫy khi không có đáp án nào đúng.\n"
-        "Đánh giá từng lựa chọn trước khi kết luận.\n"
+        "Tự đánh giá nội bộ từng lựa chọn trước khi kết luận.\n"
         "Nếu không có đáp án đúng, ưu tiên chọn lựa chọn thể hiện 'không thể cung cấp thông tin' hoặc tương đương.\n"
-        "Chỉ trả về JSON hợp lệ.\n"
+        "KHÔNG in reasoning/chain-of-thought/thinking process.\n"
+        "Chỉ trả về đúng 1 dòng JSON hợp lệ.\n"
         'Định dạng cho phép: {"answer":"A","reason":"..."} hoặc {"answer":"NONE","reason":"..."}'
     ),
 }
 
 
+MAX_CONTEXT_CHARS = 1500
+
+
 def domain_user_prompt(domain: str, passage: str, question: str, choices: Dict[str, str]) -> str:
     choice_block = format_choices(choices)
+    ctx = passage[:MAX_CONTEXT_CHARS] if passage else ""
     if domain == "rag":
         return (
             "### Thông tin liên quan:\n"
-            f"{passage}\n\n"
+            f"{ctx}\n\n"
             "### Câu hỏi:\n"
             f"{question}\n\n"
             "### Các đáp án:\n"
@@ -77,40 +90,31 @@ def domain_user_prompt(domain: str, passage: str, question: str, choices: Dict[s
         return (
             f"Câu hỏi: {question}\n\n"
             f"Các đáp án:\n{choice_block}\n\n"
-            "Yêu cầu:\n"
-            "1) Phân tích bước 1.\n"
-            "2) Phân tích bước 2.\n"
-            "3) Kiểm tra lại phép tính/kết luận.\n"
-            'Trả lời JSON duy nhất: {"answer":"A","reason":"..."}'
+            "Tự phân tích nội bộ và chỉ xuất kết quả cuối.\n"
+            'Trả lời đúng 1 dòng JSON duy nhất: {"answer":"A","reason":"..."}'
         )
     if domain == "multi_domain":
         return (
             f"Câu hỏi: {question}\n\n"
             f"Các đáp án:\n{choice_block}\n\n"
-            "Hãy làm theo các bước:\n"
-            "1) Xác định lĩnh vực/khía cạnh chính của câu hỏi.\n"
-            "2) Phân tích từng đáp án dựa trên kiến thức liên quan.\n"
-            "3) Loại đáp án sai, chọn đáp án chính xác nhất.\n"
-            'Trả lời JSON duy nhất: {"answer":"A","reason":"..."}'
+            "Tự phân tích nội bộ, chọn đáp án chính xác nhất.\n"
+            'Trả lời đúng 1 dòng JSON duy nhất: {"answer":"A","reason":"..."}'
         )
     if domain == "should_correct":
         return (
             f"Câu hỏi/Phát biểu cần kiểm tra: {question}\n\n"
             f"Các đáp án:\n{choice_block}\n\n"
-            "Suy nghĩ theo trình tự:\n"
-            "1) Phát biểu cần kiểm tra là gì?\n"
-            "2) Phát biểu đúng hay sai? Vì sao?\n"
-            "3) Nếu sai, đáp án nào sửa đúng nhất?\n"
-            'Trả lời JSON duy nhất: {"is_correct":false,"correction":"...","answer":"B"}'
+            "Tự kiểm tra nội bộ đúng/sai và chọn đáp án sửa đúng nhất.\n"
+            'Trả lời đúng 1 dòng JSON duy nhất: {"is_correct":false,"correction":"...","answer":"B"}'
         )
     if domain == "ignore_answer":
         return (
             f"Câu hỏi: {question}\n\n"
             f"Các đáp án:\n{choice_block}\n\n"
-            "Kiểm tra từng đáp án là đúng hay sai.\n"
-            "Nếu có đáp án đúng thì chọn chữ cái tương ứng.\n"
+            "Tự kiểm tra nội bộ từng đáp án.\n"
+            "Nếu có đáp án đúng thì trả chữ cái tương ứng.\n"
             'Nếu không có đáp án đúng, có thể trả {"answer":"NONE","reason":"..."}.\n'
-            'Trả lời JSON duy nhất: {"answer":"A","reason":"..."}'
+            'Trả lời đúng 1 dòng JSON duy nhất.'
         )
     return (
         f"Câu hỏi: {question}\n\n"

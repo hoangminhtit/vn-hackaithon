@@ -1,147 +1,189 @@
-# VSDS 2026 - MCQ Pipeline
+# VN Hackathon MCQ Solver
 
-Pipeline tra loi trac nghiem tieng Viet da domain, toi uu cho CPU va co che do LLM-backed + heuristic fallback.
+Pipeline giải câu hỏi trắc nghiệm tiếng Việt với 2 lớp xử lý:
+- Heuristic solver theo domain (`rag`, `math`, `multi_domain`, `should_correct`, `ignore_answer`)
+- Local LLM qua `transformers` (mặc định dùng `Qwen/Qwen3.5-4B`)
 
-## 1) Yeu cau
+Mục tiêu: chạy local ổn định, có fallback rõ ràng, có trace để debug.
 
-- Python 3.9+
-- Input JSON dang list:
-  - `qid` (string)
-  - `question` (string)
-  - `choices` (list[string])
+## 1) Yêu cầu môi trường
 
-## 2) Cau truc chinh
+- Python `3.10+` (khuyến nghị dùng `venv`)
+- macOS/Linux/Windows đều chạy được
+- Nếu dùng LLM mode: cài `torch` + `transformers` mới
 
-- `run.py`: entrypoint
-- `pipeline.py`: orchestration
-- `router.py`: heuristic router
-- `prompts.py`: router/domain prompts cho LLM
-- `utils/preprocess.py`: tach passage/question, map labels dong
-- `utils/bm25.py`: BM25-like retrieval cho RAG
-- `utils/postprocess.py`: parse JSON output + fallback
-- `utils/llm.py`: OpenAI-compatible LLM client
-- `domains/*.py`: domain solvers (heuristic fallback)
-
-## 3) Cach chay
-
-### A. Heuristic mode (khong can LLM)
-
-```bash
-python run.py --input "public-test_1780368312.json" --output "output/pred.csv" --mode heuristic
-```
-
-### B. Auto mode (uu tien LLM neu co env)
-
-```bash
-python run.py --input "public-test_1780368312.json" --output "output/pred.csv" --mode auto
-```
-
-### D. Dung model Qwen local bang transformers
-
-Model link ban gui: [Qwen/Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)
-
-Code hien tai load model local qua `transformers` (khong goi API/chat-completions).
-
-Dat env:
-
-```bash
-export HF_MODEL_ID="Qwen/Qwen3.5-4B"
-```
-
-Hoac dung `LLM_MODEL` thay cho `HF_MODEL_ID`:
-
-```bash
-export LLM_MODEL="Qwen/Qwen3.5-4B"
-```
-
-Neu can gioi han token sinh:
-
-```bash
-export LLM_MAX_NEW_TOKENS="256"
-```
-
-Mac dinh model se duoc tai/cache vao thu muc `model/` trong project.
-Neu muon doi thu muc, dat:
-
-```bash
-export HF_LOCAL_DIR="model"
-```
-
-Tao venv (khuyen nghi):
+## 2) Cài đặt nhanh
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+
 python -m pip install --upgrade pip
-```
-
-Install thu vien:
-
-```bash
 pip install torch accelerate sentencepiece
 pip install --upgrade transformers
 ```
 
-Neu gap loi:
-- `model type qwen3_5 ... Transformers does not recognize this architecture`
-
-thi cai ban moi nhat tu source:
+Nếu gặp lỗi `qwen3_5 ... Transformers does not recognize this architecture`:
 
 ```bash
 pip install --upgrade "git+https://github.com/huggingface/transformers.git"
 ```
 
-Sau do chay:
+## 3) Cấu hình `.env`
 
-```bash
-python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm
+Tạo file `.env` ở root (hoặc copy từ `.env.example`):
+
+```env
+HF_MODEL_ID=Qwen/Qwen3.5-4B
+HF_LOCAL_DIR=model
+LLM_MAX_NEW_TOKENS=32
+LLM_ANSWER_MAX_TOKENS=32
+LLM_USE_LLM_ROUTE=0
 ```
 
-Log reasoning/raw output cho 1 cau (vi du `test_0001`):
+Ý nghĩa biến môi trường:
+- `HF_MODEL_ID` / `LLM_MODEL`: model id dùng cho local transformers
+- `HF_LOCAL_DIR`: thư mục cache model local (mặc định `model/`)
+- `LLM_MAX_NEW_TOKENS`: trần token sinh tối đa phía client
+- `LLM_ANSWER_MAX_TOKENS`: token cho bước answer trong pipeline
+- `LLM_USE_LLM_ROUTE`: `0` = route bằng heuristic (nhanh, mặc định), `1` = gọi LLM route
+
+Lưu ý:
+- `HF_TOKEN` **không dùng** trong flow local-only hiện tại (nếu set vẫn bị ignore trong code)
+- Lần đầu chạy có thể tải model từ HF về `HF_LOCAL_DIR`; các lần sau đọc từ cache local
+
+## 4) Chế độ chạy
+
+Pipeline hỗ trợ `--mode`:
+- `heuristic`: không dùng LLM
+- `llm`: bắt buộc có `HF_MODEL_ID` hoặc `LLM_MODEL`
+- `auto`: nếu có model env -> chạy LLM, không có -> fallback heuristic
+
+## 5) Lệnh chạy chuẩn
+
+### Heuristic mode
 
 ```bash
-export TRACE_LLM="1"
+python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode heuristic
+```
+
+### LLM mode (local transformers)
+
+```bash
+source .venv/bin/activate
+export HF_MODEL_ID="Qwen/Qwen3.5-4B"
+export HF_LOCAL_DIR="model"
+export LLM_MAX_NEW_TOKENS=32
+export LLM_ANSWER_MAX_TOKENS=32
+export LLM_USE_LLM_ROUTE=0
+unset TRACE_LLM
+unset DEBUG_LLM
+
+python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm --workers 1
+```
+
+Ghi chú:
+- Khi có LLM client, `run.py` sẽ tự ép `--workers=1` để tránh nghẽn local inference
+- `utils/llm.py` đã bật `enable_thinking=False` để giảm latency output JSON
+
+### Auto mode
+
+```bash
+python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode auto
+```
+
+## 6) Trace và file review
+
+### In trace ra terminal
+
+```bash
+export TRACE_LLM=1
+python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm --workers 1
+```
+
+Chỉ trace 1 câu:
+
+```bash
+export TRACE_LLM=1
 export TRACE_QID="test_0001"
-python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm
+python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm --workers 1
 ```
 
-Xuat file review chi tiet:
+### Xuất trace JSONL và danh sách câu cần review
 
 ```bash
 python run.py \
   --input "data/public-test_1780368312.json" \
   --output "output/pred.csv" \
   --mode llm \
+  --workers 1 \
   --trace-output "output/llm_trace.jsonl" \
   --wrong-output "output/llm_wrong.jsonl"
 ```
 
-Ghi chu `--wrong-output`:
-- Neu input co `answer` (ground truth), file se la cac cau du doan sai.
-- Neu input khong co `answer`, file se la cac cau bi fallback (de uu tien review prompt/parser).
+- `--trace-output`: lưu route raw, answer raw, fallback flags theo từng `qid`
+- `--wrong-output`: lưu các câu `is_wrong=true` (nếu input có gold `answer`), hoặc các câu fallback để review
 
-## 4) Tham so CLI
+## 7) Định dạng dữ liệu
 
-- `--input`: duong dan file JSON input
-- `--output`: duong dan CSV output
-- `--workers`: so luong worker threads (mac dinh min(cpu_count, 8))
-- `--mode`: `heuristic | llm | auto`
-- `--trace-output`: file JSONL de luu route/answer raw cua LLM
-- `--wrong-output`: file JSONL de luu cac cau can review (sai/fallback)
+### Input JSON
 
-## 5) Output
+`run.py` yêu cầu input là `list` object:
+- `qid`: string
+- `question`: string
+- `choices`: danh sách lựa chọn (preprocess sẽ map thành label A/B/C...)
+- tùy chọn `answer`: gold label để chấm và xuất `wrong-output`
 
-File CSV:
+Ví dụ:
+
+```json
+[
+  {
+    "qid": "test_0001",
+    "question": "Câu hỏi ...",
+    "choices": ["Đáp án 1", "Đáp án 2", "Đáp án 3", "Đáp án 4"]
+  }
+]
+```
+
+### Output CSV
 
 ```csv
 qid,answer
 test_0001,A
 test_0002,C
-...
 ```
 
-## 6) Luu y
+## 8) Tham số CLI
 
-- `auto` mode se tu dong fallback sang heuristic neu chua cau hinh LLM.
-- Trong `llm` mode, neu output LLM sai format, pipeline van co parse/fallback de dam bao tra ve nhan hop le.
-- Nhan dap an la dong theo so luong choices (`A..Z`).
+- `--input` (default: `data/public-test_1780368312.json`)
+- `--output` (default: `output/pred.csv`)
+- `--workers` (default: `min(cpu_count, 8)`, nhưng LLM mode bị override về `1`)
+- `--mode` (`heuristic` | `llm` | `auto`)
+- `--trace-output` (optional JSONL path)
+- `--wrong-output` (optional JSONL path)
+
+## 9) Các lỗi thường gặp
+
+### `LLM mode requires local model id ...`
+
+Thiếu `HF_MODEL_ID` / `LLM_MODEL`. Cách xử lý:
+- export biến env trước khi chạy, hoặc
+- thêm vào `.env` ở root
+
+### `qwen3_5 ... does not recognize this architecture`
+
+`transformers` quá cũ:
+
+```bash
+pip install --upgrade "git+https://github.com/huggingface/transformers.git"
+```
+
+### Chạy LLM chậm
+
+Checklist:
+- Dùng `LLM_MAX_NEW_TOKENS=32`, `LLM_ANSWER_MAX_TOKENS=32`
+- Giữ `LLM_USE_LLM_ROUTE=0`
+- Tắt `TRACE_LLM` và `DEBUG_LLM` khi chạy full
+- Chạy `--workers 1`
+- Đảm bảo đã bật `venv` đúng (tránh dùng nhầm system Python)
