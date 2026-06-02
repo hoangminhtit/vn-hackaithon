@@ -4,3 +4,10 @@ data/
 output/
 results/
 .vscode/
+.DS_Store
+model/
+.venv/
+.ruff_cache/
+.ipynb_checkpoints/
+*.py[cod]
+*$py.class

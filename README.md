@@ -36,24 +36,59 @@ python run.py --input "public-test_1780368312.json" --output "output/pred.csv" -
 python run.py --input "public-test_1780368312.json" --output "output/pred.csv" --mode auto
 ```
 
-### D. Dung truc tiep HuggingFace (Qwen model)
+### D. Dung model Qwen local bang transformers
 
 Model link ban gui: [Qwen/Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)
 
-Pipeline da ho tro auto map sang HuggingFace Inference Router neu co `HF_TOKEN`.
+Code hien tai load model local qua `transformers` (khong goi API/chat-completions).
 
 Dat env:
 
 ```bash
-export HF_TOKEN="hf_xxx_your_token"
 export HF_MODEL_ID="Qwen/Qwen3.5-4B"
 ```
 
 Hoac dung `LLM_MODEL` thay cho `HF_MODEL_ID`:
 
 ```bash
-export HF_TOKEN="hf_xxx_your_token"
 export LLM_MODEL="Qwen/Qwen3.5-4B"
+```
+
+Neu can gioi han token sinh:
+
+```bash
+export LLM_MAX_NEW_TOKENS="256"
+```
+
+Mac dinh model se duoc tai/cache vao thu muc `model/` trong project.
+Neu muon doi thu muc, dat:
+
+```bash
+export HF_LOCAL_DIR="model"
+```
+
+Tao venv (khuyen nghi):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+```
+
+Install thu vien:
+
+```bash
+pip install torch accelerate sentencepiece
+pip install --upgrade transformers
+```
+
+Neu gap loi:
+- `model type qwen3_5 ... Transformers does not recognize this architecture`
+
+thi cai ban moi nhat tu source:
+
+```bash
+pip install --upgrade "git+https://github.com/huggingface/transformers.git"
 ```
 
 Sau do chay:
@@ -62,11 +97,28 @@ Sau do chay:
 python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm
 ```
 
-Ghi chu:
-- Neu ban tu host model bang vLLM/SGLang local, co the dat:
-  - `LLM_API_URL=http://localhost:8000/v1/chat/completions`
-  - `LLM_MODEL=Qwen/Qwen3.5-4B`
-  - `LLM_API_KEY=EMPTY`
+Log reasoning/raw output cho 1 cau (vi du `test_0001`):
+
+```bash
+export TRACE_LLM="1"
+export TRACE_QID="test_0001"
+python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm
+```
+
+Xuat file review chi tiet:
+
+```bash
+python run.py \
+  --input "data/public-test_1780368312.json" \
+  --output "output/pred.csv" \
+  --mode llm \
+  --trace-output "output/llm_trace.jsonl" \
+  --wrong-output "output/llm_wrong.jsonl"
+```
+
+Ghi chu `--wrong-output`:
+- Neu input co `answer` (ground truth), file se la cac cau du doan sai.
+- Neu input khong co `answer`, file se la cac cau bi fallback (de uu tien review prompt/parser).
 
 ## 4) Tham so CLI
 
@@ -74,6 +126,8 @@ Ghi chu:
 - `--output`: duong dan CSV output
 - `--workers`: so luong worker threads (mac dinh min(cpu_count, 8))
 - `--mode`: `heuristic | llm | auto`
+- `--trace-output`: file JSONL de luu route/answer raw cua LLM
+- `--wrong-output`: file JSONL de luu cac cau can review (sai/fallback)
 
 ## 5) Output
 

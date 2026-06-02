@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import os
 from typing import Dict, List
 
 from domains import ignore_answer, math, multi_domain, rag, should_correct
@@ -24,10 +25,10 @@ DOMAIN_RUNNERS = {
 }
 
 
-def _llm_route_or_fallback(processed: Dict, llm_client: LLMClient | None) -> str:
+def _llm_route_or_fallback(processed: Dict, llm_client: LLMClient | None) -> tuple[str, str, bool]:
     if llm_client is None:
         route_result = route_question(processed)
-        return apply_route_fallback(route_result, processed["passage"])
+        return apply_route_fallback(route_result, processed["passage"]), "", True
 
     try:
         raw_route = llm_client.chat(
@@ -36,15 +37,23 @@ def _llm_route_or_fallback(processed: Dict, llm_client: LLMClient | None) -> str
             max_tokens=80,
         )
         route_result = parse_route_output(raw_route)
-    except Exception:
+        used_fallback = False
+    except Exception as exc:
+        if os.getenv("DEBUG_LLM", "").strip() == "1":
+            print(f"[DEBUG_LLM] route fallback for {processed.get('qid', 'unknown')}: {exc}")
         route_result = route_question(processed)
+        raw_route = f"[ERROR] {exc}"
+        used_fallback = True
 
-    return apply_route_fallback(route_result, processed["passage"])
+    domain = apply_route_fallback(route_result, processed["passage"])
+    return domain, raw_route, used_fallback
 
 
-def _llm_answer_or_fallback(processed: Dict, domain: str, llm_client: LLMClient | None) -> str:
+def _llm_answer_or_fallback(
+    processed: Dict, domain: str, llm_client: LLMClient | None
+) -> tuple[str, str, bool]:
     if llm_client is None:
-        return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed)
+        return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed), "", True
 
     try:
         domain_context = processed["passage"]
@@ -57,17 +66,45 @@ def _llm_answer_or_fallback(processed: Dict, domain: str, llm_client: LLMClient 
         )
         parsed = parse_answer(raw_answer, processed["num_choices"])
         if parsed and parsed != "NONE":
-            return parsed
-    except Exception:
-        pass
-    return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed)
+            return parsed, raw_answer, False
+    except Exception as exc:
+        if os.getenv("DEBUG_LLM", "").strip() == "1":
+            print(f"[DEBUG_LLM] answer fallback for {processed.get('qid', 'unknown')}: {exc}")
+        raw_answer = f"[ERROR] {exc}"
+    else:
+        raw_answer = raw_answer if "raw_answer" in locals() else ""
+    return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed), raw_answer, True
 
 
 def process_question(item: Dict, llm_client: LLMClient | None = None) -> Dict:
     processed = preprocess(item)
-    domain = _llm_route_or_fallback(processed, llm_client)
-    answer = _llm_answer_or_fallback(processed, domain, llm_client)
-    return {"qid": item["qid"], "answer": answer, "domain": domain}
+    domain, llm_raw_route, route_fallback = _llm_route_or_fallback(processed, llm_client)
+    answer, llm_raw_answer, used_fallback = _llm_answer_or_fallback(processed, domain, llm_client)
+    trace_qid = os.getenv("TRACE_QID", "").strip()
+    should_trace = os.getenv("TRACE_LLM", "").strip() == "1" and (
+        not trace_qid or trace_qid == item.get("qid", "")
+    )
+    if should_trace:
+        print(
+            f"[TRACE_LLM] qid={item['qid']} domain={domain} "
+            f"route_fallback={route_fallback} answer_fallback={used_fallback} answer={answer}"
+        )
+        if llm_raw_route:
+            print(f"[TRACE_LLM] raw_route={llm_raw_route}")
+        if llm_raw_answer:
+            print(f"[TRACE_LLM] raw_answer={llm_raw_answer}")
+
+    result = {"qid": item["qid"], "answer": answer, "domain": domain}
+    result["llm_raw_route"] = llm_raw_route
+    result["llm_raw_answer"] = llm_raw_answer
+    result["route_fallback"] = route_fallback
+    result["llm_fallback"] = used_fallback
+    if "answer" in item:
+        result["gold_answer"] = item["answer"]
+        result["is_wrong"] = str(item["answer"]).strip().upper() != answer
+    else:
+        result["is_wrong"] = used_fallback
+    return result
 
 
 def run_pipeline(items: List[Dict], max_workers: int = 8, llm_client: LLMClient | None = None) -> List[Dict]:
