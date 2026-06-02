@@ -69,6 +69,8 @@ python run.py --input "data/public-test_1780368312.json" --output "output/pred.c
 
 ### LLM mode (local transformers)
 
+**Chạy đầy đủ (khuyến nghị):** CSV + trace JSONL + file review
+
 ```bash
 source .venv/bin/activate
 export HF_MODEL_ID="Qwen/Qwen3.5-4B"
@@ -79,12 +81,26 @@ export LLM_USE_LLM_ROUTE=0
 unset TRACE_LLM
 unset DEBUG_LLM
 
+python run.py \
+  --input "data/public-test_1780368312.json" \
+  --output "output/pred.csv" \
+  --mode llm \
+  --workers 1 \
+  --trace-output "output/llm_trace.jsonl" \
+  --wrong-output "output/llm_wrong.jsonl"
+```
+
+**Chạy nhanh (không ghi trace file):**
+
+```bash
 python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm --workers 1
 ```
 
 Ghi chú:
-- Khi có LLM client, `run.py` sẽ tự ép `--workers=1` để tránh nghẽn local inference
-- `utils/llm.py` đã bật `enable_thinking=False` để giảm latency output JSON
+- Khi có LLM client, `run.py` sẽ tự ép `--workers=1` nếu bạn truyền `--workers` khác 1
+- `utils/llm.py` bật `enable_thinking=False` để giảm latency output JSON
+- `--trace-output`: mỗi dòng JSONL gồm `qid`, `domain`, `answer`, `raw_route`, `raw_answer`, `route_fallback`, `answer_fallback`
+- `--wrong-output`: với `public-test` (không có field `answer` trong input) sẽ ghi các câu **bị fallback** sang heuristic; nếu input có `answer` thì ghi các câu **dự đoán sai**
 
 ### Auto mode
 
@@ -109,9 +125,13 @@ export TRACE_QID="test_0001"
 python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm --workers 1
 ```
 
-### Xuất trace JSONL và danh sách câu cần review
+### Xuất trace JSONL (tương đương block LLM ở mục 5)
+
+Dùng cùng lệnh có `--trace-output` và `--wrong-output` như trên. Chỉ cần thêm env nếu muốn in raw output ra terminal:
 
 ```bash
+export TRACE_LLM=1
+export TRACE_QID="test_0001"   # bỏ dòng này để trace tất cả câu
 python run.py \
   --input "data/public-test_1780368312.json" \
   --output "output/pred.csv" \
@@ -120,9 +140,6 @@ python run.py \
   --trace-output "output/llm_trace.jsonl" \
   --wrong-output "output/llm_wrong.jsonl"
 ```
-
-- `--trace-output`: lưu route raw, answer raw, fallback flags theo từng `qid`
-- `--wrong-output`: lưu các câu `is_wrong=true` (nếu input có gold `answer`), hoặc các câu fallback để review
 
 ## 7) Định dạng dữ liệu
 
