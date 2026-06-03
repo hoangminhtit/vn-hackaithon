@@ -83,7 +83,7 @@ class LLMClient:
             max_new_tokens = 256
         return cls(model_id=model, max_new_tokens=max_new_tokens)
 
-    def chat(self, system_prompt: str, user_prompt: str, max_tokens: int = 256) -> str:
+    def chat(self, system_prompt: str, user_prompt: str, max_tokens: int = 256, enable_thinking: bool = False) -> str:
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -94,7 +94,7 @@ class LLMClient:
                 add_generation_prompt=True,
                 return_tensors="pt",
                 return_dict=True,
-                enable_thinking=False,
+                enable_thinking=enable_thinking,
             )
         except TypeError:
             try:
@@ -127,9 +127,10 @@ class LLMClient:
         else:
             eos_ids = [eos_id] if eos_id is not None else []
 
-        think_end_ids = self.tokenizer.encode("</think>", add_special_tokens=False)
-        if think_end_ids:
-            eos_ids.append(think_end_ids[-1])
+        if not enable_thinking:
+            think_end_ids = self.tokenizer.encode("</think>", add_special_tokens=False)
+            if think_end_ids:
+                eos_ids.append(think_end_ids[-1])
         eos_ids = list(set(i for i in eos_ids if i is not None))
 
         pad_id = self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else (eos_ids[0] if eos_ids else 0)

@@ -3,11 +3,23 @@ from typing import Dict
 from domains.common import lexical_best_choice, normalize_for_match
 
 
-NONE_HINTS = (
-    "không thể cung cấp thông tin",
+REFUSE_HINTS = (
+    "không thể cung cấp",
+    "không thể hỗ trợ",
+    "tôi không thể",
+    "không hỗ trợ",
+    "vi phạm pháp luật",
+    "hành vi vi phạm",
+    "không có phương án hợp lệ",
     "không có đáp án nào đúng",
     "tất cả đều sai",
     "none of the above",
+    "không nên thực hiện",
+    "trái pháp luật",
+    "bất hợp pháp",
+    "không được phép",
+    "từ chối cung cấp",
+    "không khuyến khích",
 )
 
 
@@ -15,6 +27,6 @@ def solve(processed: Dict) -> str:
     choices = processed["choices"]
     for label, text in choices.items():
         normalized = normalize_for_match(text)
-        if any(h in normalized for h in NONE_HINTS):
+        if any(h in normalized for h in REFUSE_HINTS):
             return label
     return lexical_best_choice(processed["question"], choices)

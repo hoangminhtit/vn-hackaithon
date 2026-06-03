@@ -39,7 +39,7 @@ def _llm_route_or_fallback(processed: Dict, llm_client: LLMClient | None) -> tup
     try:
         raw_route = llm_client.chat(
             ROUTER_SYSTEM_PROMPT,
-            router_user_prompt(processed["passage"], processed["question"], processed["num_choices"]),
+            router_user_prompt(processed["passage"], processed["question"], processed["num_choices"], processed.get("choices")),
             max_tokens=80,
         )
         route_result = parse_route_output(raw_route)
@@ -61,19 +61,28 @@ def _llm_answer_or_fallback(
     if llm_client is None:
         return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed), "", True
 
+    if domain == "ignore_answer":
+        answer = ignore_answer.solve(processed)
+        return answer, "[HEURISTIC_DIRECT]", False
+
     try:
         try:
-            answer_max_tokens = int(os.getenv("LLM_ANSWER_MAX_TOKENS", "64"))
+            answer_max_tokens = int(os.getenv("LLM_ANSWER_MAX_TOKENS", "128"))
         except ValueError:
-            answer_max_tokens = 64
-        answer_max_tokens = max(16, min(answer_max_tokens, 256))
+            answer_max_tokens = 128
+        answer_max_tokens = max(16, min(answer_max_tokens, 512))
+
         domain_context = processed["passage"]
         if domain == "rag":
-            domain_context = bm25_retrieve(processed["passage"], processed["question"])
+            if len(processed["passage"]) <= 6000:
+                domain_context = processed["passage"]
+            else:
+                domain_context = bm25_retrieve(processed["passage"], processed["question"])
         raw_answer = llm_client.chat(
             DOMAIN_SYSTEM_PROMPTS[domain],
             domain_user_prompt(domain, domain_context, processed["question"], processed["choices"]),
             max_tokens=answer_max_tokens,
+            enable_thinking=False,
         )
         parsed = parse_answer(raw_answer, processed["num_choices"])
         if parsed and parsed != "NONE":

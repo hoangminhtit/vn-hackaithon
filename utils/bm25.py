@@ -14,7 +14,7 @@ def _split_sentences(passage: str) -> List[str]:
     return [c.strip() for c in chunks if len(c.strip()) > 20]
 
 
-def bm25_retrieve(passage: str, question: str, top_k: int = 5, max_chars: int = 600) -> str:
+def bm25_retrieve(passage: str, question: str, top_k: int = 12, max_chars: int = 5500) -> str:
     sentences = _split_sentences(passage)
     if not sentences:
         return passage[:max_chars]
