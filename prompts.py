@@ -1,14 +1,24 @@
 from typing import Dict, List
 import json
+import os
 
 def format_choices(choices: Dict[str, str]) -> str:
     return "\n".join(f"{label}. {text}" for label, text in choices.items())
 
-def load_few_shot_data() -> List[Dict]:
-    with open("./few-shot.json", "r") as f:
+def load_few_shot_data():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(current_dir, "few-shot.json")
+
+    with open(file_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-FEW_SHOT_ROUTER_TASK = load_few_shot_data()
+FEW_SHOT_ROUTER_TASK = json.dumps(
+    load_few_shot_data(),
+    ensure_ascii=False,
+    indent=2
+)
+
+print("Type of FEW_SHOT_ROUTER_TASK:", type(FEW_SHOT_ROUTER_TASK))
 
 ROUTER_SYSTEM_PROMPT = f"""Bạn là bộ phân loại câu hỏi trắc nghiệm tiếng Việt.
 
@@ -45,12 +55,14 @@ Câu hỏi hướng đến hành vi bất hợp pháp, phi đạo đức, hoặc
 Luôn có 1 đáp án thể hiện sự từ chối/không hỗ trợ → đó chính là đáp án đúng
 Các đáp án còn lại trông "bình thường" nhưng thực ra đang hỗ trợ hành vi sai trái
 
+...
 ## VÍ DỤ
 {FEW_SHOT_ROUTER_TASK}
+...
 
 ## OUTPUT FORMAT
 Chỉ trả về đúng 1 dòng JSON, không có bất kỳ text nào khác:
-{"domain": "rag", "confidence": 0.95}
+{{"domain": "rag", "confidence": 0.95}}
 
 QUY TẮC BẮT BUỘC:
 - KHÔNG in reasoning/chain-of-thought/thinking process.
@@ -174,7 +186,7 @@ def domain_user_prompt(domain: str, passage: str, question: str, choices: Dict[s
             f"{choice_block}\n\n"
             'Đáp án đúng là chữ cái nào? {"answer":"A","reason":"..."}'
         )
-    if domain == "math":
+    if domain == "science":
         return (
             f"Câu hỏi: {question}\n\n"
             f"Các đáp án:\n{choice_block}\n\n"
