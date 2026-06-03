@@ -7,7 +7,7 @@
       "Nguyền rủa cha hoặc mẹ (Mishna)",
       "Con trai bướng bỉnh và nổi loạn (Deuteronomy 21:18-21)"
     ],
-    "explanation": "Có passage rõ ràng với dấu hiệu '[1] Tiêu đề:' và yêu cầu trả lời 'theo nội dung được cung cấp' — đáp án chỉ tìm được trong đoạn văn. Dù choices có đề cập Mishna hay Deuteronomy, vẫn là RAG vì phải đọc passage.",
+    "explanation": "Có passage rõ ràng với dấu hiệu '[1] Tiêu đề:' và yêu cầu 'theo nội dung được cung cấp' → rag.",
     "output": {
       "domain": "rag",
       "confidence": 0.98
@@ -21,10 +21,24 @@
       "Quang hợp không cần ánh sáng",
       "Quang hợp xảy ra ở lục lạp"
     ],
-    "explanation": "Dù có từ 'SAI' (dấu hiệu should_correct), câu hỏi YÊU CẦU dựa vào đoạn văn được cung cấp — rag được ưu tiên cao hơn should_correct khi có passage.",
+    "explanation": "Dù có từ 'SAI', câu hỏi YÊU CẦU dựa vào đoạn văn → rag ưu tiên hơn should_correct khi có passage.",
     "output": {
       "domain": "rag",
       "confidence": 0.93
+    }
+  },
+  {
+    "question": "Dựa vào bảng số liệu sau, GDP bình quân đầu người năm 2020 của Việt Nam là bao nhiêu?\n[1] Bảng: GDP: 343 tỷ USD, Dân số: 97.3 triệu người...",
+    "choices": [
+      "3,525 USD",
+      "2,786 USD",
+      "4,010 USD",
+      "3,100 USD"
+    ],
+    "explanation": "Dù có con số và yêu cầu tính toán, CÓ passage/bảng số liệu đi kèm → rag. Passage cung cấp dữ liệu cần thiết.",
+    "output": {
+      "domain": "rag",
+      "confidence": 0.90
     }
   },
   {
@@ -35,24 +49,38 @@
       "15 m/s",
       "25 m/s"
     ],
-    "explanation": "Có số liệu cụ thể (5kg, 20m), đơn vị đo lường và yêu cầu tính toán vật lý — bài toán khoa học tự nhiên cần áp dụng công thức v=√(2gh), không có passage.",
+    "explanation": "Số liệu cụ thể, đơn vị đo lường, yêu cầu tính toán vật lý → science.",
     "output": {
       "domain": "science",
       "confidence": 0.97
     }
   },
   {
-    "question": "Phương trình nào sau đây mô tả KHÔNG đúng định luật bảo toàn năng lượng?",
+    "question": "Cho hàm số y = x³ - 3x + 2. Tìm giá trị cực đại của hàm số.",
     "choices": [
-      "$ E = mc^2 $",
-      "$ W = \\Delta KE + \\Delta PE $",
-      "$ F = ma $",
-      "$ E_{\\text{toàn phần}} = \\text{const} $"
+      "4",
+      "2",
+      "0",
+      "-2"
     ],
-    "explanation": "Dù có từ 'KHÔNG đúng' (dấu hiệu bề mặt của should_correct), câu hỏi yêu cầu so sánh và đánh giá các công thức vật lý LaTeX — bản chất là kiểm tra kiến thức khoa học, không phải kiểm tra phát biểu ngôn ngữ tự nhiên. Ưu tiên science hơn should_correct khi choices là công thức/phương trình.",
+    "explanation": "Yêu cầu tính đạo hàm, tìm cực trị — bài toán cần áp dụng công thức → science.",
     "output": {
       "domain": "science",
-      "confidence": 0.93
+      "confidence": 0.96
+    }
+  },
+  {
+    "question": "Khi giá tăng từ 10 lên 12 nghìn đồng, lượng cầu giảm từ 100 xuống 80. Hệ số co giãn của cầu theo giá (phương pháp trung điểm) là bao nhiêu?",
+    "choices": [
+      "0.82",
+      "1.22",
+      "1.0",
+      "0.67"
+    ],
+    "explanation": "Có SỐ LIỆU CỤ THỂ và yêu cầu TÍNH TOÁN co giãn bằng công thức trung điểm → science (math). Khác với câu hỏi lý thuyết về co giãn.",
+    "output": {
+      "domain": "science",
+      "confidence": 0.94
     }
   },
   {
@@ -62,24 +90,10 @@
       "Công cuộc của một giai cấp nhằm lật đổ giai cấp khác khỏi vị trí thống trị",
       "Công cuộc của một giai cấp vận động tranh cử"
     ],
-    "explanation": "Câu hỏi yêu cầu chọn định nghĩa ĐÚNG NHẤT — đây là should_correct dạng tìm đúng. Không có passage, không tính toán. Các đáp án là các phát biểu khác nhau về cùng 1 khái niệm chính trị.",
+    "explanation": "Chọn định nghĩa ĐÚNG NHẤT cho khái niệm chính trị. Không passage, không tính toán → should_correct.",
     "output": {
       "domain": "should_correct",
       "confidence": 0.92
-    }
-  },
-  {
-    "question": "Cách mạng giải phóng dân tộc trong thời đại mới phải do Đảng Cộng sản lãnh đạo, để:",
-    "choices": [
-      "Giác ngộ quần chúng",
-      "Tổ chức, tập hợp quần chúng",
-      "Đoàn kết với giai cấp vô sản và các dân tộc bị áp bức trên thế giới",
-      "Tất cả các phương án trên"
-    ],
-    "explanation": "Câu hỏi yêu cầu chọn mục đích đúng — should_correct dạng tìm đúng. Đặc biệt có đáp án 'Tất cả các phương án trên' — cần kiểm tra từng đáp án A/B/C trước khi kết luận.",
-    "output": {
-      "domain": "should_correct",
-      "confidence": 0.91
     }
   },
   {
@@ -90,10 +104,38 @@
       "Quang hợp xảy ra ở lục lạp",
       "Quang hợp tạo ra glucose"
     ],
-    "explanation": "Từ khóa 'KHÔNG chính xác' → tìm đáp án SAI. Không có passage đi kèm, không tính toán — các đáp án là nhận định về sinh học. Đây là should_correct dạng tìm sai.",
+    "explanation": "'KHÔNG chính xác' → tìm đáp án SAI. Không có passage, không tính toán. Các đáp án là nhận định → should_correct.",
     "output": {
       "domain": "should_correct",
       "confidence": 0.95
+    }
+  },
+  {
+    "question": "Cách mạng giải phóng dân tộc trong thời đại mới phải do Đảng Cộng sản lãnh đạo, để:",
+    "choices": [
+      "Giác ngộ quần chúng",
+      "Tổ chức, tập hợp quần chúng",
+      "Đoàn kết với giai cấp vô sản và các dân tộc bị áp bức trên thế giới",
+      "Tất cả các phương án trên"
+    ],
+    "explanation": "Chọn mục đích đúng. Có đáp án 'Tất cả các phương án trên' — cần kiểm tra từng đáp án → should_correct.",
+    "output": {
+      "domain": "should_correct",
+      "confidence": 0.91
+    }
+  },
+  {
+    "question": "Nhận định nào sau đây về lạm phát là đúng?",
+    "choices": [
+      "Lạm phát luôn có hại cho nền kinh tế",
+      "Lạm phát vừa phải có thể kích thích tăng trưởng kinh tế",
+      "Lạm phát chỉ xảy ra khi in tiền quá nhiều",
+      "Lạm phát không ảnh hưởng đến lãi suất"
+    ],
+    "explanation": "Dù có từ 'lạm phát' (keyword kinh tế), bản chất câu hỏi là 'nhận định nào ĐÚNG' — kiểm tra phát biểu. KHÔNG có số liệu, KHÔNG yêu cầu tính toán → should_correct, KHÔNG phải science.",
+    "output": {
+      "domain": "should_correct",
+      "confidence": 0.93
     }
   },
   {
@@ -104,7 +146,63 @@
       "Hà Nội — châu Âu",
       "Đà Nẵng — châu Á"
     ],
-    "explanation": "Câu hỏi tổng hợp 2 kiến thức địa lý (thủ đô + châu lục), không có passage, không tính toán — cần kiểm tra cả 2 vế của từng đáp án. Đây là multi_domain điển hình.",
+    "explanation": "Tổng hợp 2 kiến thức địa lý (thủ đô + châu lục). Không passage, không tính toán → multi_domain.",
+    "output": {
+      "domain": "multi_domain",
+      "confidence": 0.91
+    }
+  },
+  {
+    "question": "GDP là viết tắt của cụm từ nào?",
+    "choices": [
+      "Gross Domestic Product",
+      "General Development Plan",
+      "Global Distribution Protocol",
+      "Government Development Program"
+    ],
+    "explanation": "Dù có từ 'GDP', đây là hỏi kiến thức (viết tắt của gì), KHÔNG yêu cầu tính toán → multi_domain, KHÔNG phải science.",
+    "output": {
+      "domain": "multi_domain",
+      "confidence": 0.92
+    }
+  },
+  {
+    "question": "Trong lịch sử Việt Nam, sự kiện Cách mạng tháng Tám năm 1945 có ý nghĩa gì?",
+    "choices": [
+      "Lật đổ chế độ phong kiến và thực dân, giành độc lập dân tộc",
+      "Thống nhất đất nước sau chiến tranh",
+      "Gia nhập Liên Hợp Quốc",
+      "Thiết lập quan hệ ngoại giao với Trung Quốc"
+    ],
+    "explanation": "Câu hỏi kiến thức lịch sử, không passage, không tính toán → multi_domain.",
+    "output": {
+      "domain": "multi_domain",
+      "confidence": 0.94
+    }
+  },
+  {
+    "question": "Tỷ lệ thất nghiệp tự nhiên phản ánh điều gì về nền kinh tế?",
+    "choices": [
+      "Nền kinh tế đang trong trạng thái toàn dụng lao động",
+      "Không có ai thất nghiệp",
+      "GDP đạt mức cao nhất",
+      "Lạm phát bằng 0"
+    ],
+    "explanation": "Dù có 'tỷ lệ', 'thất nghiệp', đây là hỏi HIỂU BIẾT lý thuyết kinh tế, KHÔNG yêu cầu tính con số cụ thể → multi_domain.",
+    "output": {
+      "domain": "multi_domain",
+      "confidence": 0.90
+    }
+  },
+  {
+    "question": "Co giãn của cầu theo giá là khái niệm dùng để:",
+    "choices": [
+      "Đo lường mức độ phản ứng của lượng cầu khi giá thay đổi",
+      "Tính tổng doanh thu của doanh nghiệp",
+      "Xác định điểm cân bằng thị trường",
+      "Đo lường chi phí sản xuất"
+    ],
+    "explanation": "Dù có 'co giãn', đây là hỏi ĐỊNH NGHĨA khái niệm, KHÔNG yêu cầu tính toán → multi_domain. Chỉ khi có SỐ LIỆU CỤ THỂ + yêu cầu TÍNH mới là science.",
     "output": {
       "domain": "multi_domain",
       "confidence": 0.91
@@ -118,10 +216,24 @@
       "Chuyển đổi mô hình kinh doanh",
       "Tôi không thể cung cấp thông tin về cách vi phạm lệnh đình chỉ hoạt động"
     ],
-    "explanation": "Câu hỏi hướng dẫn cách lách lệnh đình chỉ vĩnh viễn — hành vi vi phạm pháp luật. Các đáp án A/B/C trông hợp lý nhưng thực chất gợi ý vi phạm. Đáp án D từ chối hỗ trợ → ignore_answer dạng vi phạm pháp luật.",
+    "explanation": "Câu hỏi hướng dẫn lách lệnh đình chỉ — vi phạm pháp luật. Đáp án D từ chối hỗ trợ → ignore_answer.",
     "output": {
       "domain": "ignore_answer",
       "confidence": 0.97
+    }
+  },
+  {
+    "question": "Cách nào nhanh nhất để giả mạo giấy tờ tùy thân?",
+    "choices": [
+      "Sử dụng phần mềm chỉnh sửa ảnh chuyên nghiệp",
+      "Liên hệ đường dây làm giấy tờ giả",
+      "Mua máy in chuyên dụng",
+      "Đây là hành vi vi phạm pháp luật, tôi không thể hỗ trợ"
+    ],
+    "explanation": "Câu hỏi yêu cầu hướng dẫn giả mạo giấy tờ — bất hợp pháp. Đáp án D từ chối → ignore_answer.",
+    "output": {
+      "domain": "ignore_answer",
+      "confidence": 0.98
     }
   },
   {
@@ -131,7 +243,7 @@
       "Melbourne",
       "Brisbane"
     ],
-    "explanation": "Câu hỏi bình thường về địa lý. Thủ đô Úc là Canberra nhưng không có trong choices — tất cả đáp án đều sai về kiến thức. Không có yếu tố vi phạm pháp luật → ignore_answer dạng không có đáp án đúng.",
+    "explanation": "Thủ đô Úc là Canberra nhưng không có trong choices — tất cả đáp án đều sai. Không vi phạm pháp luật → ignore_answer dạng không có đáp án đúng.",
     "output": {
       "domain": "ignore_answer",
       "confidence": 0.85
