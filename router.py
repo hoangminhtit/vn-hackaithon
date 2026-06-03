@@ -63,14 +63,14 @@ def route_question(processed: Dict) -> Dict:
 
     if has_long_passage:
         if has_math_expr or has_formula:
-            return {"domain": "math", "confidence": 0.75}
+            return {"domain": "science", "confidence": 0.75}
         return {"domain": "rag", "confidence": 0.8}
 
     math_hits = sum(1 for h in MATH_HINTS if h in question)
     if math_hits >= 2 or has_math_expr or has_formula:
-        return {"domain": "math", "confidence": 0.82}
+        return {"domain": "science", "confidence": 0.82}
     if math_hits == 1:
-        return {"domain": "math", "confidence": 0.7}
+        return {"domain": "science", "confidence": 0.7}
 
     return {"domain": "multi_domain", "confidence": 0.6}
 

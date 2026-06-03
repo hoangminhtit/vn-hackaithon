@@ -137,8 +137,8 @@ python run.py \
   --output "output/pred.csv" \
   --mode llm \
   --workers 1 \
-  --trace-output "output/llm_trace.jsonl" \
-  --wrong-output "output/llm_wrong.jsonl"
+  --trace-output "logs/llm_trace.jsonl" \
+  --wrong-output "logs/llm_wrong.jsonl"
 ```
 
 ## 7) Định dạng dữ liệu
