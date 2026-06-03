@@ -5,7 +5,7 @@ def format_choices(choices: Dict[str, str]) -> str:
     return "\n".join(f"{label}. {text}" for label, text in choices.items())
 
 def load_few_shot_data() -> List[Dict]:
-    with open("few-shot.json", "r") as f:
+    with open("./few-shot.json", "r") as f:
         return json.load(f)
 
 FEW_SHOT_ROUTER_TASK = load_few_shot_data()
