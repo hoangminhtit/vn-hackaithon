@@ -18,7 +18,7 @@ from utils.preprocess import preprocess
 
 DOMAIN_RUNNERS = {
     "rag": rag.solve,
-    "math": math.solve,
+    "science": math.solve,
     "multi_domain": multi_domain.solve,
     "should_correct": should_correct.solve,
     "ignore_answer": ignore_answer.solve,
