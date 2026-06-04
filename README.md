@@ -1,165 +1,89 @@
 # VN Hackathon MCQ Solver
 
-Pipeline giải câu hỏi trắc nghiệm tiếng Việt với 2 lớp xử lý:
-- Heuristic solver theo domain (`rag`, `math`, `multi_domain`, `should_correct`, `ignore_answer`)
-- Local LLM qua `transformers` (mặc định dùng `Qwen/Qwen3.5-4B`)
+Pipeline giải câu hỏi trắc nghiệm tiếng Việt: route theo domain → LLM local (Qwen) + fallback heuristic.
 
-Mục tiêu: chạy local ổn định, có fallback rõ ràng, có trace để debug.
+---
 
-## 1) Yêu cầu môi trường
+## Chạy thử trên máy (khuyến nghị)
 
-- Python `3.10+` (khuyến nghị dùng `venv`)
-- macOS/Linux/Windows đều chạy được
-- Nếu dùng LLM mode: cài `torch` + `transformers` mới
-
-## 2) Cài đặt nhanh
+### 1. Cài đặt (một lần)
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-
-python -m pip install --upgrade pip
-pip install torch accelerate sentencepiece
-pip install --upgrade transformers
+pip install -r requirements.txt
+cp .env.example .env   # chỉnh HF_MODEL_ID nếu cần
 ```
 
-Nếu gặp lỗi `qwen3_5 ... Transformers does not recognize this architecture`:
+### 2. Đặt file test
+
+Copy file JSON public test vào `data/`:
+
+```
+data/public-test_1780368312.json
+```
+
+### 3. Chạy
 
 ```bash
-pip install --upgrade "git+https://github.com/huggingface/transformers.git"
+chmod +x run.sh   # một lần
+./run.sh
 ```
 
-## 3) Cấu hình `.env`
+Hoặc gọi trực tiếp:
 
-Tạo file `.env` ở root (hoặc copy từ `.env.example`):
+```bash
+source .venv/bin/activate
+python3 run.py \
+  --input data/public-test_1780368312.json \
+  --output output/pred.csv \
+  --mode llm \
+  --workers 1
+```
+
+Kết quả: `output/pred.csv` (2 cột `qid`, `answer`).
+
+### Tuỳ chọn
+
+```bash
+./run.sh heuristic                                    # không load model
+./run.sh llm data/public-test_1780368312.json output/pred.csv
+./run.sh --help
+```
+
+**Lưu ý:** Không set `COMPETITION=1` khi chạy thử local. Biến đó chỉ dùng trong Docker lúc nộp.
+
+---
+
+## Cấu hình `.env`
+
+Copy `.env.example` → `.env`:
 
 ```env
 HF_MODEL_ID=Qwen/Qwen3.5-4B
 HF_LOCAL_DIR=model
 LLM_MAX_NEW_TOKENS=32
-LLM_ANSWER_MAX_TOKENS=32
+LLM_ANSWER_MAX_TOKENS=64
 LLM_USE_LLM_ROUTE=0
 ```
 
-Ý nghĩa biến môi trường:
-- `HF_MODEL_ID` / `LLM_MODEL`: model id dùng cho local transformers
-- `HF_LOCAL_DIR`: thư mục cache model local (mặc định `model/`)
-- `LLM_MAX_NEW_TOKENS`: trần token sinh tối đa phía client
-- `LLM_ANSWER_MAX_TOKENS`: token cho bước answer trong pipeline
-- `LLM_USE_LLM_ROUTE`: `0` = route bằng heuristic (nhanh, mặc định), `1` = gọi LLM route
+Tham số RAG / sampling: xem [`.env.example`](.env.example).
 
-Lưu ý:
-- `HF_TOKEN` **không dùng** trong flow local-only hiện tại (nếu set vẫn bị ignore trong code)
-- Lần đầu chạy có thể tải model từ HF về `HF_LOCAL_DIR`; các lần sau đọc từ cache local
+## Chế độ pipeline
 
-## 4) Chế độ chạy
+| `--mode` | Mô tả |
+|----------|--------|
+| `heuristic` | Không load LLM |
+| `llm` | Bắt buộc `HF_MODEL_ID` |
+| `auto` | Có model → LLM, không → heuristic |
 
-Pipeline hỗ trợ `--mode`:
-- `heuristic`: không dùng LLM
-- `llm`: bắt buộc có `HF_MODEL_ID` hoặc `LLM_MODEL`
-- `auto`: nếu có model env -> chạy LLM, không có -> fallback heuristic
+## Định dạng dữ liệu
 
-## 5) Lệnh chạy chuẩn
-
-### Heuristic mode
-
-```bash
-python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode heuristic
-```
-
-### LLM mode (local transformers)
-
-**Chạy đầy đủ (khuyến nghị):** CSV + trace JSONL + file review
-
-```bash
-source .venv/bin/activate
-export HF_MODEL_ID="Qwen/Qwen3.5-4B"
-export HF_LOCAL_DIR="model"
-export LLM_MAX_NEW_TOKENS=32
-export LLM_ANSWER_MAX_TOKENS=32
-export LLM_USE_LLM_ROUTE=0
-unset TRACE_LLM
-unset DEBUG_LLM
-
-python run.py \
-  --input "data/public-test_1780368312.json" \
-  --output "output/pred.csv" \
-  --mode llm \
-  --workers 1 \
-  --trace-output "output/llm_trace.jsonl" \
-  --wrong-output "output/llm_wrong.jsonl"
-```
-
-**Chạy nhanh (không ghi trace file):**
-
-```bash
-python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm --workers 1
-```
-
-Ghi chú:
-- Khi có LLM client, `run.py` sẽ tự ép `--workers=1` nếu bạn truyền `--workers` khác 1
-- `utils/llm.py` bật `enable_thinking=False` để giảm latency output JSON
-- `--trace-output`: mỗi dòng JSONL gồm `qid`, `domain`, `answer`, `raw_route`, `raw_answer`, `route_fallback`, `answer_fallback`
-- `--wrong-output`: với `public-test` (không có field `answer` trong input) sẽ ghi các câu **bị fallback** sang heuristic; nếu input có `answer` thì ghi các câu **dự đoán sai**
-
-### Auto mode
-
-```bash
-python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode auto
-```
-
-## 6) Trace và file review
-
-### In trace ra terminal
-
-```bash
-export TRACE_LLM=1
-python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm --workers 1
-```
-
-Chỉ trace 1 câu:
-
-```bash
-export TRACE_LLM=1
-export TRACE_QID="test_0001"
-python run.py --input "data/public-test_1780368312.json" --output "output/pred.csv" --mode llm --workers 1
-```
-
-### Xuất trace JSONL (tương đương block LLM ở mục 5)
-
-Dùng cùng lệnh có `--trace-output` và `--wrong-output` như trên. Chỉ cần thêm env nếu muốn in raw output ra terminal:
-
-```bash
-export TRACE_LLM=1
-export TRACE_QID="test_0001"   # bỏ dòng này để trace tất cả câu
-python run.py \
-  --input "data/public-test_1780368312.json" \
-  --output "output/pred.csv" \
-  --mode llm \
-  --workers 1 \
-  --trace-output "logs/llm_trace.jsonl" \
-  --wrong-output "logs/llm_wrong.jsonl"
-```
-
-## 7) Định dạng dữ liệu
-
-### Input JSON
-
-`run.py` yêu cầu input là `list` object:
-- `qid`: string
-- `question`: string
-- `choices`: danh sách lựa chọn (preprocess sẽ map thành label A/B/C...)
-- tùy chọn `answer`: gold label để chấm và xuất `wrong-output`
-
-Ví dụ:
+### Input JSON (chạy thử)
 
 ```json
 [
-  {
-    "qid": "test_0001",
-    "question": "Câu hỏi ...",
-    "choices": ["Đáp án 1", "Đáp án 2", "Đáp án 3", "Đáp án 4"]
-  }
+  {"qid": "test_0001", "question": "...", "choices": ["...", "..."]}
 ]
 ```
 
@@ -168,39 +92,74 @@ Ví dụ:
 ```csv
 qid,answer
 test_0001,A
-test_0002,C
 ```
 
-## 8) Tham số CLI
+---
 
-- `--input` (default: `data/public-test_1780368312.json`)
-- `--output` (default: `output/pred.csv`)
-- `--workers` (default: `min(cpu_count, 8)`, nhưng LLM mode bị override về `1`)
-- `--mode` (`heuristic` | `llm` | `auto`)
-- `--trace-output` (optional JSONL path)
-- `--wrong-output` (optional JSONL path)
+## Nộp BTC (Docker — chỉ khi submit)
 
-## 9) Các lỗi thường gặp
+Checklist yêu cầu ban tổ chức:
 
-### `LLM mode requires local model id ...`
+| Yêu cầu | Trạng thái |
+|--------|------------|
+| Docker Hub | ⚠️ `docker push` image của team |
+| Entry-point đọc `/data/public_test.csv` hoặc `private_test.csv` | ✅ `docker_entry.sh` |
+| Ghi `/output/pred.csv` (`qid`, `answer`) | ✅ |
+| GitHub + reproduce | ✅ repo + lệnh dưới |
+| Thuyết minh phương pháp | ✅ [`PHUONG_PHAP.md`](PHUONG_PHAP.md) |
 
-Thiếu `HF_MODEL_ID` / `LLM_MODEL`. Cách xử lý:
-- export biến env trước khi chạy, hoặc
-- thêm vào `.env` ở root
+### Trước khi build (bắt buộc)
 
-### `qwen3_5 ... does not recognize this architecture`
-
-`transformers` quá cũ:
+Thư mục `model/` phải **đã có weights** (image bake sẵn, BTC không cần tải HuggingFace):
 
 ```bash
-pip install --upgrade "git+https://github.com/huggingface/transformers.git"
+# Tải model 1 lần trên máy dev (nếu model/ còn trống)
+source .venv/bin/activate
+./run.sh    # hoặc chạy llm 1 câu — HF tải vào model/
+
+ls model/   # phải thấy file cache (không rỗng)
 ```
 
-### Chạy LLM chậm
+Image sẽ **rất nặng** (~vài GB tùy model). `docker push` có thể lâu.
 
-Checklist:
-- Dùng `LLM_MAX_NEW_TOKENS=32`, `LLM_ANSWER_MAX_TOKENS=32`
-- Giữ `LLM_USE_LLM_ROUTE=0`
-- Tắt `TRACE_LLM` và `DEBUG_LLM` khi chạy full
-- Chạy `--workers 1`
-- Đảm bảo đã bật `venv` đúng (tránh dùng nhầm system Python)
+### Build & chạy thử giống BTC
+
+```bash
+docker build -t YOUR_USER/vn-hackathon-mcq:latest .
+docker push YOUR_USER/vn-hackathon-mcq:latest
+
+docker run --rm \
+  -v "$(pwd)/data:/data:ro" \
+  -v "$(pwd)/output:/output" \
+  YOUR_USER/vn-hackathon-mcq:latest
+
+head output/pred.csv
+```
+
+Không cần mount `model/` — weights đã nằm trong image tại `/app/model`.
+
+Trong container: `.env` (nếu có lúc build) + `docker_entry.sh` `source .env`. Đọc CSV tại `/data`, ghi `/output/pred.csv`.
+
+Input CSV BTC — cột `qid`, `question`, và `A,B,C,D` hoặc cột `choices` (JSON / phân tách `|`).
+
+Chạy local vẫn dùng `.env`; chỉnh tham số dev ở đó. Khi đổi config nộp BTC, cập nhật `Dockerfile` (hoặc `.env.example` cho đồng bộ) rồi build lại image.
+
+---
+
+## Lỗi thường gặp
+
+**`No input in /data`** — đang chạy với `COMPETITION=1` nhưng thiếu CSV. Chạy thử local dùng `./run.sh` hoặc `--input data/....json`; không export `COMPETITION=1`.
+
+**`LLM mode requires local model id`** — thêm `HF_MODEL_ID` vào `.env`, hoặc `./run.sh heuristic`.
+
+**`qwen3_5 ... does not recognize`** — `pip install --upgrade "git+https://github.com/huggingface/transformers.git"`
+
+**JSON answer bị cắt** — tăng `LLM_ANSWER_MAX_TOKENS=64`.
+
+---
+
+## Tài liệu thêm
+
+- [`PHUONG_PHAP.md`](PHUONG_PHAP.md) — phương pháp
+- [`report.md`](report.md) — implementation (EN)
+- [`pipeline_report.md`](pipeline_report.md) — thiết kế chi tiết

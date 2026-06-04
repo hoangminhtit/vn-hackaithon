@@ -223,11 +223,13 @@ def route_question(processed: Dict) -> Dict:
     is_theory = _is_theory_question(question)
     is_policy = any(h in question for h in POLICY_HINTS)
 
-    sc_hits = sum(1 for h in SHOULD_CORRECT_HINTS if h in question)
-    if sc_hits > 0 and not has_math_expr and not has_formula:
-        return {"domain": "should_correct", "confidence": 0.88 if is_theory else 0.85}
-
     has_numbers = _has_numeric_data(question)
+    calc_hints = ("tính", "tìm", "xác định", "bao nhiêu", "cho biết", "giải")
+    wants_calculation = has_numbers and any(h in question for h in calc_hints)
+
+    sc_hits = sum(1 for h in SHOULD_CORRECT_HINTS if h in question)
+    if sc_hits > 0 and not has_math_expr and not has_formula and not wants_calculation:
+        return {"domain": "should_correct", "confidence": 0.88 if is_theory else 0.85}
     has_units = _has_science_units(processed["question"])
     strong_hits = sum(1 for h in MATH_STRONG_HINTS if h in question)
     weak_hits = sum(1 for h in MATH_WEAK_HINTS if h in question)

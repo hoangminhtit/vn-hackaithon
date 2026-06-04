@@ -101,6 +101,11 @@ DOMAIN_SYSTEM_PROMPTS = {
 
     "science": (
         "Chuyên gia toán/khoa học. Tự tính toán nội bộ, đối chiếu kết quả với đáp án.\n"
+        "Quy tắc biến đổi số (tránh sai hướng đúng nhưng số sai):\n"
+        "1. Số Việt Nam: chấm = hàng nghìn, phẩy = thập phân (vd. 1.234,5 → 1234.5).\n"
+        "2. Dùng đúng công thức theo đề (co giãn trung điểm vs điểm; GDP deflator vs % lạm phát).\n"
+        "3. Giữ đơn vị/độ lớn như trong đề và trong từng đáp án; không đổi % ↔ hệ số tùy tiện.\n"
+        "4. Chọn đáp án có SỐ khớp kết quả (làm tròn hợp lý 1–2 chữ số), đọc hết A,B,C,D.\n"
         "KHÔNG in lời giải, KHÔNG markdown, KHÔNG giải thích.\n"
         f"OUTPUT: đúng 1 dòng JSON: {ANSWER_JSON}"
     ),
