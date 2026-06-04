@@ -20,15 +20,12 @@ def preprocess(item: Dict) -> Dict:
         r"(Đoạn thông tin:.*?)(?=Câu hỏi:)",
         r"(\[1\].*?)(?=Câu hỏi:)",
         r"(Nội dung:.*?)(?=Câu hỏi:)",
-        r"(Dựa vào đoạn văn[^.]*\.)(?=Câu hỏi:)",
     ]
 
     for pattern in passage_patterns:
         match = re.search(pattern, question_raw, re.DOTALL | re.IGNORECASE)
         if match:
             passage = match.group(1).strip()
-            passage = re.sub(r"^Đoạn thông tin:\s*", "", passage, flags=re.IGNORECASE).strip()
-            passage = re.sub(r"^\[\d+\]\s*Tiêu đề:\s*[^\n]*\n?", "", passage, flags=re.IGNORECASE).strip()
             question_clean = question_raw[match.end() :].replace("Câu hỏi:", "").strip()
             break
 

@@ -65,11 +65,6 @@ def _llm_answer_or_fallback(
         answer = ignore_answer.solve(processed)
         return answer, "[HEURISTIC_DIRECT]", False
 
-    if domain == "science":
-        specialized = math.solve_specialized(processed["question"], processed["choices"])
-        if specialized:
-            return specialized, "[HEURISTIC_SPECIALIZED]", False
-
     try:
         try:
             answer_max_tokens = int(os.getenv("LLM_ANSWER_MAX_TOKENS", "128"))
@@ -79,14 +74,10 @@ def _llm_answer_or_fallback(
 
         domain_context = processed["passage"]
         if domain == "rag":
-            try:
-                retrieve_min = int(os.getenv("RAG_RETRIEVE_MIN_CHARS", "1500"))
-            except ValueError:
-                retrieve_min = 1500
-            if len(processed["passage"]) > retrieve_min:
-                domain_context = bm25_retrieve(processed["passage"], processed["question"])
-            else:
+            if len(processed["passage"]) <= 6000:
                 domain_context = processed["passage"]
+            else:
+                domain_context = bm25_retrieve(processed["passage"], processed["question"])
         raw_answer = llm_client.chat(
             DOMAIN_SYSTEM_PROMPTS[domain],
             domain_user_prompt(domain, domain_context, processed["question"], processed["choices"]),

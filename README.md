@@ -1,10 +1,20 @@
 # VN Hackathon MCQ Solver
 
-Pipeline giải câu hỏi trắc nghiệm tiếng Việt: route theo domain → LLM local (Qwen) + fallback heuristic.
+Pipeline trắc nghiệm tiếng Việt: **route theo domain** → LLM local (Qwen) + **fallback heuristic** khi parse/lỗi.
+
+| Domain | Xử lý chính |
+|--------|-------------|
+| `rag` | BM25 trên passage + LLM (passage ngắn dùng full text) |
+| `science` | LLM toán/khoa học + heuristic số (co giãn, GDP, …) |
+| `multi_domain` | LLM tổng hợp |
+| `should_correct` | LLM kiểm tra đúng/sai |
+| `ignore_answer` | Heuristic (không gọi LLM) |
+
+Thuyết minh chi tiết: [`PHUONG_PHAP.md`](PHUONG_PHAP.md)
 
 ---
 
-## Chạy thử trên máy (khuyến nghị)
+## Chạy thử trên máy
 
 ### 1. Cài đặt (một lần)
 
@@ -12,14 +22,20 @@ Pipeline giải câu hỏi trắc nghiệm tiếng Việt: route theo domain →
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # chỉnh HF_MODEL_ID nếu cần
+cp .env.example .env
 ```
 
-### 2. Đặt file test
+Nếu lỗi architecture Qwen3.5:
 
-Copy file JSON public test vào `data/`:
-
+```bash
+pip install --upgrade "git+https://github.com/huggingface/transformers.git"
 ```
+
+### 2. Dữ liệu
+
+Đặt public test JSON vào `data/`:
+
+```text
 data/public-test_1780368312.json
 ```
 
@@ -30,10 +46,11 @@ chmod +x run.sh   # một lần
 ./run.sh
 ```
 
-Hoặc gọi trực tiếp:
+Kết quả: `output/pred.csv` (cột `qid`, `answer`).
+
+Gọi trực tiếp:
 
 ```bash
-source .venv/bin/activate
 python3 run.py \
   --input data/public-test_1780368312.json \
   --output output/pred.csv \
@@ -41,88 +58,103 @@ python3 run.py \
   --workers 1
 ```
 
-Kết quả: `output/pred.csv` (2 cột `qid`, `answer`).
-
-### Tuỳ chọn
+Tuỳ chọn:
 
 ```bash
-./run.sh heuristic                                    # không load model
+./run.sh heuristic
 ./run.sh llm data/public-test_1780368312.json output/pred.csv
 ./run.sh --help
 ```
 
-**Lưu ý:** Không set `COMPETITION=1` khi chạy thử local. Biến đó chỉ dùng trong Docker lúc nộp.
+**Lưu ý:** Không `export COMPETITION=1` khi chạy local — biến đó chỉ dành cho container nộp BTC. `run.sh` đã `unset COMPETITION` sẵn.
 
 ---
 
 ## Cấu hình `.env`
 
-Copy `.env.example` → `.env`:
-
 ```env
 HF_MODEL_ID=Qwen/Qwen3.5-4B
 HF_LOCAL_DIR=model
 LLM_MAX_NEW_TOKENS=32
-LLM_ANSWER_MAX_TOKENS=64
+LLM_ANSWER_MAX_TOKENS=32
 LLM_USE_LLM_ROUTE=0
 ```
 
-Tham số RAG / sampling: xem [`.env.example`](.env.example).
+| Biến | Ý nghĩa |
+|------|---------|
+| `HF_MODEL_ID` | Model HuggingFace |
+| `HF_LOCAL_DIR` | Cache local (mặc định `model/`) |
+| `LLM_MAX_NEW_TOKENS` | Trần token sinh |
+| `LLM_ANSWER_MAX_TOKENS` | Token bước trả lời |
+| `LLM_USE_LLM_ROUTE` | `0` = route heuristic (nhanh), `1` = LLM route |
 
-## Chế độ pipeline
+LLM dùng **greedy** (`do_sample=False`), không cấu hình `temperature` / `top_p`.
 
-| `--mode` | Mô tả |
-|----------|--------|
-| `heuristic` | Không load LLM |
+Debug (tùy chọn): `TRACE_LLM=1`, `DEBUG_LLM=1`, `TRACE_QID=test_0001`
+
+---
+
+## Chế độ `--mode`
+
+| Mode | Mô tả |
+|------|--------|
+| `heuristic` | Không load model |
 | `llm` | Bắt buộc `HF_MODEL_ID` |
-| `auto` | Có model → LLM, không → heuristic |
+| `auto` | Có model trong env → LLM, không → heuristic |
 
-## Định dạng dữ liệu
+## Định dạng I/O
 
-### Input JSON (chạy thử)
+**Local dev — JSON:**
 
 ```json
-[
-  {"qid": "test_0001", "question": "...", "choices": ["...", "..."]}
-]
+[{"qid": "test_0001", "question": "...", "choices": ["A text", "B text"]}]
 ```
 
-### Output CSV
+**Output (local & BTC):**
 
 ```csv
 qid,answer
 test_0001,A
 ```
 
+## CLI `run.py`
+
+| Tham số | Mặc định (local) |
+|---------|------------------|
+| `--input` | `data/public-test_1780368312.json` |
+| `--output` | `output/pred.csv` |
+| `--mode` | `auto` |
+| `--workers` | ≤8 (LLM tự ép `1`) |
+| `--trace-output` | (optional) JSONL debug |
+| `--wrong-output` | (optional) JSONL câu fallback/sai |
+
 ---
 
-## Nộp BTC (Docker — chỉ khi submit)
+## Nộp BTC (Docker)
 
-Checklist yêu cầu ban tổ chức:
+### Checklist ban tổ chức
 
-| Yêu cầu | Trạng thái |
-|--------|------------|
-| Docker Hub | ⚠️ `docker push` image của team |
-| Entry-point đọc `/data/public_test.csv` hoặc `private_test.csv` | ✅ `docker_entry.sh` |
-| Ghi `/output/pred.csv` (`qid`, `answer`) | ✅ |
-| GitHub + reproduce | ✅ repo + lệnh dưới |
-| Thuyết minh phương pháp | ✅ [`PHUONG_PHAP.md`](PHUONG_PHAP.md) |
+| Yêu cầu | Repo |
+|--------|------|
+| Image trên Docker Hub | Team `docker push` |
+| Entry-point đọc `/data/public_test.csv` hoặc `private_test.csv` | `docker_entry.sh` |
+| Ghi `/output/pred.csv` (`qid`, `answer`) | `run.py` |
+| Source + reproduce | README + lệnh dưới |
+| Thuyết minh | `PHUONG_PHAP.md` |
 
-### Trước khi build (bắt buộc)
+### Chuẩn bị trước `docker build`
 
-Thư mục `model/` phải **đã có weights** (image bake sẵn, BTC không cần tải HuggingFace):
+1. Có `.env` ở root (copy từ `.env.example`) — được copy vào image lúc build.
+2. Thư mục `model/` **đã có weights** (chạy `./run.sh` một lần nếu còn trống):
 
 ```bash
-# Tải model 1 lần trên máy dev (nếu model/ còn trống)
-source .venv/bin/activate
-./run.sh    # hoặc chạy llm 1 câu — HF tải vào model/
-
-ls model/   # phải thấy file cache (không rỗng)
+./run.sh
+ls model/   # không được rỗng
 ```
 
-Image sẽ **rất nặng** (~vài GB tùy model). `docker push` có thể lâu.
+Image bake sẵn model tại `/app/model` — BTC **không** cần mount `model/` hay tải HuggingFace (nếu build đủ weights).
 
-### Build & chạy thử giống BTC
+### Build, push, chạy thử
 
 ```bash
 docker build -t YOUR_USER/vn-hackathon-mcq:latest .
@@ -136,30 +168,53 @@ docker run --rm \
 head output/pred.csv
 ```
 
-Không cần mount `model/` — weights đã nằm trong image tại `/app/model`.
+Trong container: `COMPETITION=1`, `source /app/.env`, đọc CSV trong `/data`, ghi `/output/pred.csv`.
 
-Trong container: `.env` (nếu có lúc build) + `docker_entry.sh` `source .env`. Đọc CSV tại `/data`, ghi `/output/pred.csv`.
+**Input CSV BTC** — cột bắt buộc `qid`, `question`, và một trong:
 
-Input CSV BTC — cột `qid`, `question`, và `A,B,C,D` hoặc cột `choices` (JSON / phân tách `|`).
+- `A`, `B`, `C`, `D`, …
+- hoặc `choices` (JSON array hoặc chuỗi phân tách `|`)
 
-Chạy local vẫn dùng `.env`; chỉnh tham số dev ở đó. Khi đổi config nộp BTC, cập nhật `Dockerfile` (hoặc `.env.example` cho đồng bộ) rồi build lại image.
+Heuristic không LLM khi chấm (nếu cần): `docker run -e PIPELINE_MODE=heuristic ...`
+
+### Đồng bộ config khi nộp
+
+- Chạy thử: chỉnh `.env`
+- Nộp image: cùng giá trị trong `.env` (build copy vào image) và/hoặc `ENV` trong `Dockerfile`
+- Sau khi đổi config → **build lại** image
+
+---
+
+## Cấu trúc repo
+
+```text
+├── run.sh / run.py          # Chạy local
+├── docker_entry.sh          # Entry-point BTC
+├── Dockerfile
+├── pipeline.py / router.py / prompts.py
+├── domains/                 # rag, math, multi_domain, …
+├── utils/                   # preprocess, bm25, llm, input_loader
+├── data/                    # JSON test (local, gitignore)
+├── model/                   # HF cache (gitignore, bake vào image)
+├── output/                  # pred.csv
+└── PHUONG_PHAP.md
+```
 
 ---
 
 ## Lỗi thường gặp
 
-**`No input in /data`** — đang chạy với `COMPETITION=1` nhưng thiếu CSV. Chạy thử local dùng `./run.sh` hoặc `--input data/....json`; không export `COMPETITION=1`.
-
-**`LLM mode requires local model id`** — thêm `HF_MODEL_ID` vào `.env`, hoặc `./run.sh heuristic`.
-
-**`qwen3_5 ... does not recognize`** — `pip install --upgrade "git+https://github.com/huggingface/transformers.git"`
-
-**JSON answer bị cắt** — tăng `LLM_ANSWER_MAX_TOKENS=64`.
+| Lỗi | Cách xử lý |
+|-----|------------|
+| `No input in /data` | Đang `COMPETITION=1` thiếu CSV — local dùng `./run.sh` hoặc `--input` JSON |
+| `LLM mode requires local model id` | Thêm `HF_MODEL_ID` vào `.env` hoặc `./run.sh heuristic` |
+| `model/ trống` khi `docker build` | Chạy `./run.sh` trước để tải weights |
+| `qwen3_5 ... does not recognize` | Upgrade `transformers` (lệnh ở mục cài đặt) |
+| JSON answer bị cắt | Tăng `LLM_ANSWER_MAX_TOKENS` (vd. 64) trong `.env` |
 
 ---
 
 ## Tài liệu thêm
 
-- [`PHUONG_PHAP.md`](PHUONG_PHAP.md) — phương pháp
 - [`report.md`](report.md) — implementation (EN)
-- [`pipeline_report.md`](pipeline_report.md) — thiết kế chi tiết
+- [`pipeline_report.md`](pipeline_report.md) — thiết kế pipeline
