@@ -1,9 +1,124 @@
-from typing import Dict, List
+from typing import Dict, List, Literal, Optional
 import json
 import os
+import re
+
+from utils.config import rag_max_context_chars
+
+Polarity = Literal["false", "true", "neutral"]
+
+WANT_FALSE_HINTS = (
+    "không chính xác",
+    "không đúng",
+    "không chính xác nhất",
+    "nào sai",
+    "ý sai",
+    "câu sai",
+    "phát biểu sai",
+    "ngoại trừ",
+    "không phải",
+    "sai nhất",
+    "sai,",
+    "sai?",
+    "sai ",
+    " là sai",
+)
+
+WANT_TRUE_HINTS = (
+    "nào đúng",
+    "ý đúng",
+    "câu đúng",
+    "phát biểu đúng",
+    "đúng nhất",
+    "chính xác nhất",
+    "là đúng",
+    "đúng?",
+    "đúng ",
+    "đúng,",
+    "chính xác?",
+    "chính xác ",
+)
+
+THEO_HINTS = ("theo ", "theo quan điểm", "theo tư tưởng", "theo quy định", "theo luật", "theo hiến pháp")
+
 
 def format_choices(choices: Dict[str, str]) -> str:
     return "\n".join(f"{label}. {text}" for label, text in choices.items())
+
+
+def question_polarity(question: str) -> Polarity:
+    q = question.lower()
+    if any(h in q for h in WANT_FALSE_HINTS):
+        return "false"
+    if any(h in q for h in WANT_TRUE_HINTS):
+        return "true"
+    return "neutral"
+
+
+def _has_calculation_intent(question: str) -> bool:
+    q = question.lower()
+    calc_verbs = ("tính", "giải", "tìm", "xác định giá trị", "bằng bao nhiêu", "bao nhiêu")
+    return any(v in q for v in calc_verbs) and bool(re.search(r"\d", q))
+
+
+def _domain_hint_block(domain: str, question: str) -> str:
+    polarity = question_polarity(question)
+    q = question.lower()
+    lines: List[str] = []
+
+    if domain == "should_correct":
+        if polarity == "false":
+            lines.append(
+                "⚠️ Câu hỏi hỏi phát biểu SAI/KHÔNG ĐÚNG — chọn đáp án SAI, "
+                "KHÔNG chọn đáp án nghe hợp lý nhất."
+            )
+        elif polarity == "true":
+            lines.append("⚠️ Câu hỏi hỏi phát biểu ĐÚNG — chọn đáp án CHÍNH XÁC NHẤT.")
+        else:
+            lines.append("Đọc kỹ câu hỏi để biết cần tìm phát biểu đúng hay sai.")
+        lines.append("Đánh giá từng đáp án A,B,C,D độc lập trước khi chọn.")
+
+    elif domain == "science":
+        lines.append(
+            "Đây là bài TÍNH TOÁN/GIẢI SỐ — không chọn theo cảm gián đúng/sai lý thuyết."
+        )
+        if _has_calculation_intent(question):
+            lines.append(
+                "Trích số liệu → áp dụng công thức → so khớp kết quả với đáp án (chú ý đơn vị)."
+            )
+        lines.append("Số Việt Nam: 1.000 = một nghìn; 1,5 = một phẩy năm.")
+
+    elif domain == "multi_domain":
+        lines.append(
+            "Đây là câu KIẾN THỨC — không tính toán, không đánh giá đúng/sai trừ khi câu hỏi yêu cầu."
+        )
+        if any(h in q for h in THEO_HINTS):
+            lines.append(
+                "Câu hỏi có 'Theo …' — trả lời theo quan điểm/văn bản được nêu, "
+                "không theo kiến thức chung khác."
+            )
+
+    elif domain == "rag":
+        if polarity == "false":
+            lines.append(
+                "⚠️ Câu hỏi hỏi phát biểu SAI theo context — chọn đáp án MÂU THUẪN hoặc "
+                "KHÔNG được context hỗ trợ."
+            )
+        elif polarity == "true":
+            lines.append("Chọn phát biểu được context hỗ trợ trực tiếp nhất.")
+        lines.append("Chỉ dùng thông tin trong context; bỏ qua kiến thức bên ngoài nếu mâu thuẫn.")
+
+    return "\n".join(lines)
+
+
+def _all_options_hint(choices: Dict[str, str]) -> Optional[str]:
+    for text in choices.values():
+        t = text.lower()
+        if "tất cả" in t and "phương án" in t:
+            return (
+                "Có đáp án 'Tất cả các phương án trên' — chỉ chọn nếu MỌI đáp án còn lại đều đúng."
+            )
+    return None
 
 def load_few_shot_data():
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -89,42 +204,56 @@ ANSWER_JSON = '{"answer":"X"}'
 
 DOMAIN_SYSTEM_PROMPTS = {
     "rag": (
-        "Trả lời câu hỏi trắc nghiệm tiếng Việt DỰA TRÊN context.\n"
+        "Trả lời trắc nghiệm tiếng Việt CHỈ dựa trên context được cung cấp.\n"
         "Quy tắc:\n"
-        "1. ĐỌC KỸ toàn bộ context trước khi trả lời.\n"
-        "2. Đáp án PHẢI được hỗ trợ bởi thông tin CỤ THỂ trong context.\n"
-        "3. Nếu context nói rõ 1 đáp án → chọn đáp án đó.\n"
-        "4. Không suy luận ngoài context.\n"
-        "5. Đọc TẤT CẢ các đáp án A,B,C,D trước khi chọn — KHÔNG mặc định chọn A.\n"
-        f"OUTPUT: {ANSWER_JSON} (thay X bằng A/B/C/D/...)"
+        "1. Đọc toàn bộ context trước; tìm đoạn/câu/bảng liên quan trực tiếp đến câu hỏi.\n"
+        "2. Đáp án phải được context nêu rõ hoặc suy ra trực tiếp từ context.\n"
+        "3. Hỏi 'SAI/KHÔNG đúng/ngoại trừ' → chọn đáp án mâu thuẫn context hoặc không được nêu.\n"
+        "4. Hỏi 'ĐÚNG/chính xác' → chọn đáp án khớp context nhất.\n"
+        "5. Có bảng/số liệu → lấy đúng con số từ context, không tự tính nếu context đã cho kết quả.\n"
+        "6. Không dùng kiến thức ngoài khi mâu thuẫn context.\n"
+        "7. Đọc hết A,B,C,D — không mặc định chọn A.\n"
+        f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON}"
     ),
 
     "science": (
-        "Chuyên gia toán/khoa học. Tự tính toán nội bộ, đối chiếu kết quả với đáp án.\n"
-        "KHÔNG in lời giải, KHÔNG markdown, KHÔNG giải thích.\n"
-        f"OUTPUT: đúng 1 dòng JSON: {ANSWER_JSON}"
+        "Chuyên gia toán/lý/hóa/sinh/kinh tế tính toán. Nhiệm vụ: TÍNH hoặc GIẢI, không chọn theo cảm giác.\n"
+        "Quy tắc:\n"
+        "1. Đây KHÔNG phải câu đúng/sai lý thuyết — phải ra con số/kết quả cụ thể.\n"
+        "2. Trích số liệu và đơn vị từ đề; áp dụng đúng công thức.\n"
+        "3. Tự tính nội bộ, so khớp với đáp án gần nhất (chú ý làm tròn, %, đơn vị).\n"
+        "4. Số Việt Nam: 1.000 thường là nghìn; 1,5 = 1.5.\n"
+        "5. Không chọn đáp án chỉ vì nghe đúng về mặt lý thuyết.\n"
+        f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON} — KHÔNG giải thích, KHÔNG markdown."
     ),
 
     "multi_domain": (
-        "Trả lời câu hỏi trắc nghiệm tổng hợp tiếng Việt.\n"
+        "Trả lời trắc nghiệm kiến thức tổng hợp tiếng Việt (lịch sử, địa lý, luật, chính trị, kinh tế, văn hóa).\n"
         "Quy tắc:\n"
-        "1. Xác định lĩnh vực: lịch sử, địa lý, luật, chính trị, kinh tế, CNTT...\n"
-        "2. Đọc TẤT CẢ các đáp án trước khi chọn.\n"
-        "3. Loại trừ đáp án rõ sai.\n"
-        "4. Nếu câu hỏi hỏi 'là gì/ở đâu/khi nào' → chọn đáp án chính xác nhất.\n"
-        "5. Nếu có đáp án 'Tất cả/Cả A,B,C' → kiểm tra mỗi đáp án kia, nếu tất cả đều đúng thì chọn nó.\n"
-        "6. Câu hỏi 'Theo X, ...' → trả lời theo quan điểm/tư tưởng của X, không theo ý kiến riêng.\n"
-        f"OUTPUT: {ANSWER_JSON} (thay X bằng A/B/C/D/...)"
+        "1. KHÔNG tính toán — chọn theo sự kiện, quy định, khái niệm, định nghĩa.\n"
+        "2. KHÔNG đánh giá đúng/sai kiểu should_correct trừ khi câu hỏi hỏi rõ 'đúng/sai'.\n"
+        "3. 'Theo Hồ Chí Minh/Theo luật/Theo Hiến pháp' → trả lời theo quan điểm/văn bản đó.\n"
+        "4. Câu hỏi ghép nhiều ý → đáp án phải thỏa TẤT CẢ các ý trong câu hỏi.\n"
+        "5. Loại trừ đáp án sai thời gian, sai địa danh, sai thuật ngữ.\n"
+        "6. 'Tất cả các phương án trên' chỉ khi mọi đáp án còn lại đều đúng.\n"
+        "7. Cảnh giác với các phương án phủ quát như 'Tất cả các phương án trên' hoặc 'Cả a, b, c đều đúng' khi hỏi về tư tưởng Hồ Chí Minh hoặc các chủ đề lịch sử/chính trị. Thông thường chỉ có MỘT đáp án cụ thể là đúng và chính xác nhất. Không chọn phương án 'Tất cả' trừ khi bạn hoàn toàn chắc chắn mọi phương án đơn lẻ đều hoàn toàn đúng.\n"
+        "8. Đối với các câu hỏi có rất nhiều đáp án lựa chọn (từ 5 đáp án trở lên, ví dụ A đến J), hãy so sánh các sự khác biệt nhỏ giữa từng phương án và loại trừ các đáp án chứa thông tin sai lệch/vô lý từng bước một.\n"
+        "9. Đọc hết các lựa chọn trước khi chọn.\n"
+        f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON}"
     ),
 
     "should_correct": (
-        "Chọn phát biểu/nhận định ĐÚNG hoặc SAI theo yêu cầu câu hỏi.\n"
-        "Quy tắc:\n"
-        "1. Hỏi 'sai/không đúng/ngoại trừ' → tìm đáp án SAI/không chính xác.\n"
-        "2. Hỏi 'đúng/chính xác' → tìm đáp án ĐÚNG nhất.\n"
-        "3. Đánh giá TỪNG đáp án độc lập dựa trên kiến thức thực tế.\n"
-        "4. 'Tất cả các phương án trên' chỉ chọn khi mọi đáp án còn lại đều đúng.\n"
-        f"OUTPUT: {ANSWER_JSON} (thay X bằng A/B/C/D/...)"
+        "Kiểm tra tính ĐÚNG/SAI của từng phát biểu trong đáp án.\n"
+        "Quy tắc BẮT BUỘC:\n"
+        "1. ĐỌC CỰC KỸ câu hỏi — xác định hỏi ĐÚNG hay hỏi SAI trước khi chọn.\n"
+        "2. Hỏi 'sai/không đúng/ngoại trừ/KHÔNG chính xác' → chọn đáp án SAI (dù các đáp án khác nghe đúng).\n"
+        "3. Hỏi 'đúng/chính xác' → chọn đáp án ĐÚNG nhất.\n"
+        "4. Đánh giá TỪNG đáp án độc lập; không chọn vì nghe hay/hợp lý nếu câu hỏi hỏi cái SAI.\n"
+        "5. Phát biểu khoa học/kinh tế: kiểm tra đúng/sai nội dung, không tính toán trừ khi cần.\n"
+        "6. 'Tất cả các phương án trên' chỉ khi mọi đáp án còn lại đều đúng.\n"
+        "7. Cảnh giác với các phương án phủ quát như 'Tất cả các phương án trên' hoặc 'Cả a, b, c đều đúng' khi hỏi về tư tưởng Hồ Chí Minh hoặc các chủ đề lịch sử/chính trị. Thông thường chỉ có MỘT đáp án cụ thể là đúng và chính xác nhất. Không chọn phương án 'Tất cả' trừ khi bạn hoàn toàn chắc chắn mọi phương án đơn lẻ đều hoàn toàn đúng.\n"
+        "8. Đối với các câu hỏi có rất nhiều đáp án lựa chọn (từ 5 đáp án trở lên, ví dụ A đến J), hãy so sánh các sự khác biệt nhỏ giữa từng phương án và loại trừ các đáp án chứa thông tin sai lệch/vô lý từng bước một.\n"
+        f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON}"
     ),
 
     "ignore_answer": (
@@ -152,27 +281,44 @@ DOMAIN_SYSTEM_PROMPTS = {
     ),
 }
 
-MAX_CONTEXT_CHARS = 6000
+MAX_CONTEXT_CHARS = rag_max_context_chars()
 
 
 def domain_user_prompt(domain: str, passage: str, question: str, choices: Dict[str, str]) -> str:
     choice_block = format_choices(choices)
-    ctx = passage[:MAX_CONTEXT_CHARS] if passage else ""
+    ctx = passage[:rag_max_context_chars()] if passage else ""
+    hint = _domain_hint_block(domain, question)
+    all_opt = _all_options_hint(choices)
+    hint_block = ""
+    if hint or all_opt:
+        parts = [p for p in (hint, all_opt) if p]
+        hint_block = "[HƯỚNG DẪN]\n" + "\n".join(parts) + "\n\n"
+
     if domain == "rag":
         return (
             f"[CONTEXT]\n{ctx}\n[/CONTEXT]\n\n"
+            f"{hint_block}"
             f"Câu hỏi: {question}\n\n"
             f"Đáp án:\n{choice_block}\n\n"
-            "Dựa vào context ở trên, đáp án đúng là:"
+            f"Chỉ dựa context. Trả lời: {ANSWER_JSON}"
         )
     if domain == "science":
         return (
+            f"{hint_block}"
             f"Câu hỏi: {question}\n\n"
             f"Đáp án:\n{choice_block}\n\n"
-            f"JSON: {ANSWER_JSON}"
+            f"Tính toán rồi chọn đáp án khớp. Trả lời: {ANSWER_JSON}"
+        )
+    if domain == "should_correct":
+        return (
+            f"{hint_block}"
+            f"Câu hỏi: {question}\n\n"
+            f"Đáp án:\n{choice_block}\n\n"
+            f"Trả lời: {ANSWER_JSON}"
         )
     return (
+        f"{hint_block}"
         f"Câu hỏi: {question}\n\n"
         f"Đáp án:\n{choice_block}\n\n"
-        "Đáp án đúng là:"
+        f"Trả lời: {ANSWER_JSON}"
     )

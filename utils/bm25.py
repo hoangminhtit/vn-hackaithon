@@ -3,6 +3,8 @@ import re
 from collections import Counter
 from typing import Dict, List
 
+from utils.config import rag_bm25_max_chars, rag_bm25_top_k
+
 
 def _tokenize(text: str) -> List[str]:
     cleaned = re.sub(r"[^\w\s]", " ", text.lower())
@@ -14,7 +16,9 @@ def _split_sentences(passage: str) -> List[str]:
     return [c.strip() for c in chunks if len(c.strip()) > 20]
 
 
-def bm25_retrieve(passage: str, question: str, top_k: int = 12, max_chars: int = 5500) -> str:
+def bm25_retrieve(passage: str, question: str, top_k: int | None = None, max_chars: int | None = None) -> str:
+    top_k = top_k if top_k is not None else rag_bm25_top_k()
+    max_chars = max_chars if max_chars is not None else rag_bm25_max_chars()
     sentences = _split_sentences(passage)
     if not sentences:
         return passage[:max_chars]

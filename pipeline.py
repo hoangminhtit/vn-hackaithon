@@ -11,6 +11,7 @@ from prompts import (
 )
 from router import apply_route_fallback, route_question
 from utils.bm25 import bm25_retrieve
+from utils.config import rag_full_passage_chars
 from utils.llm import LLMClient
 from utils.postprocess import parse_answer, parse_route_output
 from utils.preprocess import preprocess
@@ -65,6 +66,10 @@ def _llm_answer_or_fallback(
         answer = ignore_answer.solve(processed)
         return answer, "[HEURISTIC_DIRECT]", False
 
+    specialized = math.solve_specialized(processed["question"], processed["choices"])
+    if specialized:
+        return specialized, "[HEURISTIC_SPECIALIZED]", False
+
     try:
         try:
             answer_max_tokens = int(os.getenv("LLM_ANSWER_MAX_TOKENS", "128"))
@@ -74,7 +79,8 @@ def _llm_answer_or_fallback(
 
         domain_context = processed["passage"]
         if domain == "rag":
-            if len(processed["passage"]) <= 6000:
+            full_limit = rag_full_passage_chars()
+            if len(processed["passage"]) <= full_limit:
                 domain_context = processed["passage"]
             else:
                 domain_context = bm25_retrieve(processed["passage"], processed["question"])
