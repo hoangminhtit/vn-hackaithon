@@ -88,7 +88,7 @@ def _llm_answer_or_fallback(
             DOMAIN_SYSTEM_PROMPTS[domain],
             domain_user_prompt(domain, domain_context, processed["question"], processed["choices"]),
             max_tokens=answer_max_tokens,
-            enable_thinking=False,
+            enable_thinking=(domain == "science"),
         )
         parsed = parse_answer(raw_answer, processed["num_choices"])
         if parsed and parsed != "NONE":
