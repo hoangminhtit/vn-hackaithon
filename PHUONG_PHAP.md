@@ -231,15 +231,15 @@ Domain này được xử lý **100% heuristic** vì:
 |-----------------|-----------------|---------|
 | `HF_MODEL_ID` | `Qwen/Qwen3.5-4B` | Model HuggingFace |
 | `HF_LOCAL_DIR` | `model/` | Cache local |
-| `LLM_MAX_NEW_TOKENS` | 512 | Trần token sinh (nâng lên 512 để phục vụ reasoning) |
-| `LLM_ANSWER_MAX_TOKENS` | 512 | Token cho bước answer (nâng lên 512 để phục vụ reasoning) |
+| `LLM_MAX_NEW_TOKENS` | 32 | Trần token sinh |
+| `LLM_ANSWER_MAX_TOKENS` | 32 | Token cho bước answer |
 | `LLM_USE_LLM_ROUTE` | 0 | 0=heuristic route, 1=LLM route |
 
 ### 6.2. Client (`utils/llm.py`)
 
 - Load model qua `transformers` (`AutoModelForCausalLM`)
 - Hỗ trợ CUDA / MPS (Apple Silicon) / CPU
-- Chat template với `enable_thinking=(domain == "science")` (bật suy nghĩ chuyên sâu cho riêng câu hỏi tính toán khoa học để đảm bảo độ chính xác, giữ `False` cho các domain khác để giảm latency)
+- Chat template với `enable_thinking=False` (tắt chain-of-thought, giảm latency)
 - Thread-safe (`threading.Lock`) cho generate
 - Greedy decoding (`do_sample=False`)
 
