@@ -2,9 +2,10 @@ import argparse
 import csv
 import json
 import os
-from typing import List, Dict
+from typing import Dict, List
 
 from pipeline import run_pipeline
+from utils.input_loader import read_items, resolve_competition_input
 from utils.llm import LLMClient
 
 
@@ -24,11 +25,7 @@ def load_dotenv_file(path: str = ".env") -> None:
 
 
 def read_input(path: str) -> List[Dict]:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if not isinstance(data, list):
-        raise ValueError("Input JSON must be a list of {qid, question, choices}.")
-    return data
+    return read_items(path)
 
 
 def write_output(path: str, rows: List[Dict]) -> None:
@@ -51,19 +48,37 @@ def write_jsonl(path: str, rows: List[Dict]) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def _resolve_input_path(cli_input: str | None) -> str:
+    if cli_input:
+        return cli_input
+    if os.getenv("COMPETITION", "").strip() == "1":
+        return resolve_competition_input(os.getenv("DATA_DIR", "/data"))
+    return "data/public-test_1780368312.json"
+
+
+def _resolve_output_path(cli_output: str | None) -> str:
+    if cli_output:
+        return cli_output
+    if os.getenv("COMPETITION", "").strip() == "1":
+        return os.path.join(os.getenv("OUTPUT_DIR", "/output"), "pred.csv")
+    return "output/pred.csv"
+
+
 def main() -> None:
     load_dotenv_file(".env")
 
-    parser = argparse.ArgumentParser(description="Run MCQ pipeline on public/private JSON test.")
+    parser = argparse.ArgumentParser(
+        description="Run MCQ pipeline. Chạy local: truyền --input JSON. Docker BTC: COMPETITION=1."
+    )
     parser.add_argument(
         "--input",
-        default="data/public-test_1780368312.json",
-        help="Path to input JSON file.",
+        default=None,
+        help="Input .json hoặc .csv. Mặc định local: data/public-test_1780368312.json",
     )
     parser.add_argument(
         "--output",
-        default="output/pred.csv",
-        help="Path to output CSV file.",
+        default=None,
+        help="Output CSV (qid, answer). Mặc định local: output/pred.csv",
     )
     parser.add_argument(
         "--workers",
@@ -89,7 +104,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    items = read_input(args.input)
+    input_path = _resolve_input_path(args.input)
+    output_path = _resolve_output_path(args.output)
+
+    items = read_input(input_path)
     llm_client = None if args.mode == "heuristic" else LLMClient.from_env()
     if args.mode == "llm" and llm_client is None:
         raise ValueError(
@@ -101,7 +119,7 @@ def main() -> None:
         args.workers = 1
 
     results = run_pipeline(items, max_workers=args.workers, llm_client=llm_client)
-    write_output(args.output, results)
+    write_output(output_path, results)
     if args.trace_output:
         trace_rows = [
             {
@@ -138,7 +156,7 @@ def main() -> None:
         write_jsonl(args.wrong_output, wrong_rows)
         print(f"Wrote {len(wrong_rows)} review rows to {args.wrong_output}")
     mode_used = "llm" if llm_client else "heuristic"
-    print(f"Wrote {len(results)} predictions to {args.output} (mode={mode_used})")
+    print(f"Wrote {len(results)} predictions to {output_path} (mode={mode_used})")
 
 
 if __name__ == "__main__":
