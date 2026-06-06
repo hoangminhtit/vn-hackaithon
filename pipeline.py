@@ -66,10 +66,9 @@ def _llm_answer_or_fallback(
         answer = ignore_answer.solve(processed)
         return answer, "[HEURISTIC_DIRECT]", False
 
-    if domain == "science":
-        specialized = math.solve_specialized(processed["question"], processed["choices"])
-        if specialized:
-            return specialized, "[HEURISTIC_SPECIALIZED]", False
+    specialized = math.solve_specialized(processed["question"], processed["choices"])
+    if specialized:
+        return specialized, "[HEURISTIC_SPECIALIZED]", False
 
     try:
         try:

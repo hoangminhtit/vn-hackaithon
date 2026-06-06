@@ -236,7 +236,9 @@ DOMAIN_SYSTEM_PROMPTS = {
         "4. Câu hỏi ghép nhiều ý → đáp án phải thỏa TẤT CẢ các ý trong câu hỏi.\n"
         "5. Loại trừ đáp án sai thời gian, sai địa danh, sai thuật ngữ.\n"
         "6. 'Tất cả các phương án trên' chỉ khi mọi đáp án còn lại đều đúng.\n"
-        "7. Đọc hết A,B,C,D trước khi chọn.\n"
+        "7. Cảnh giác với các phương án phủ quát như 'Tất cả các phương án trên' hoặc 'Cả a, b, c đều đúng' khi hỏi về tư tưởng Hồ Chí Minh hoặc các chủ đề lịch sử/chính trị. Thông thường chỉ có MỘT đáp án cụ thể là đúng và chính xác nhất. Không chọn phương án 'Tất cả' trừ khi bạn hoàn toàn chắc chắn mọi phương án đơn lẻ đều hoàn toàn đúng.\n"
+        "8. Đối với các câu hỏi có rất nhiều đáp án lựa chọn (từ 5 đáp án trở lên, ví dụ A đến J), hãy so sánh các sự khác biệt nhỏ giữa từng phương án và loại trừ các đáp án chứa thông tin sai lệch/vô lý từng bước một.\n"
+        "9. Đọc hết các lựa chọn trước khi chọn.\n"
         f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON}"
     ),
 
@@ -249,6 +251,8 @@ DOMAIN_SYSTEM_PROMPTS = {
         "4. Đánh giá TỪNG đáp án độc lập; không chọn vì nghe hay/hợp lý nếu câu hỏi hỏi cái SAI.\n"
         "5. Phát biểu khoa học/kinh tế: kiểm tra đúng/sai nội dung, không tính toán trừ khi cần.\n"
         "6. 'Tất cả các phương án trên' chỉ khi mọi đáp án còn lại đều đúng.\n"
+        "7. Cảnh giác với các phương án phủ quát như 'Tất cả các phương án trên' hoặc 'Cả a, b, c đều đúng' khi hỏi về tư tưởng Hồ Chí Minh hoặc các chủ đề lịch sử/chính trị. Thông thường chỉ có MỘT đáp án cụ thể là đúng và chính xác nhất. Không chọn phương án 'Tất cả' trừ khi bạn hoàn toàn chắc chắn mọi phương án đơn lẻ đều hoàn toàn đúng.\n"
+        "8. Đối với các câu hỏi có rất nhiều đáp án lựa chọn (từ 5 đáp án trở lên, ví dụ A đến J), hãy so sánh các sự khác biệt nhỏ giữa từng phương án và loại trừ các đáp án chứa thông tin sai lệch/vô lý từng bước một.\n"
         f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON}"
     ),
 
