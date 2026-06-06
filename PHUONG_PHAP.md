@@ -133,7 +133,7 @@ Mặc định dùng **heuristic-only** vì:
 1. ignore_answer   ← kiểm tra choices có đáp án "từ chối" + câu hỏi harmful
 2. rag             ← có passage dài (> 300 ký tự)
 3. should_correct  ← keyword đúng/sai, định nghĩa
-4. science         ← công thức, số liệu, đơn vị đo (Hz, mol, ml…)
+4. science         ← công thức, số liệu, đơn vị đo (Hz, mol, ml…), hoặc intent tính toán
 5. multi_domain    ← mặc định
 ```
 
@@ -149,6 +149,8 @@ Tránh false positive: câu hỏi về Hồ Chí Minh/lịch sử có đáp án 
 - Có **số liệu + yêu cầu tính** → science (ví dụ: "Tính co giãn biết P=10→12, Q=100→80")
 - Chỉ hỏi **định nghĩa/lý thuyết** → multi_domain (ví dụ: "Co giãn là khái niệm dùng để…")
 - Có keyword **pháp luật/quy định** (`nghị quyết`, `quyết định số`, `sắp xếp`…) → multi_domain dù có số
+- **Cải tiến router số liệu:** `_has_numeric_data` tự động lọc bỏ ngày tháng/năm độc lập (e.g. 19xx, 20xx) và chấp nhận câu hỏi chỉ có 1 số nếu chứa ký hiệu `%` hoặc các đơn vị tiền tệ (`đô la`, `usd`, `vnd`, `đồng`, `triệu`, `tỷ`).
+- **Bổ sung Strong Hints:** Thêm các từ khóa đặc trưng toán học/kinh tế lượng như `"cournot"`, `"eoq"`, `"đẳng lượng"`, `"số nhân tiền"`, `"lượng đặt hàng tối ưu"`, `"hàm sản xuất"`, `"khấu hao"`, `"phân rã"`, `"độ phóng xạ"`, `"hạt nhân"` để gom chính xác vào `science`.
 
 **Science vs Should-correct:**
 - "Nhận định nào về lạm phát là đúng?" → should_correct
@@ -181,21 +183,27 @@ Khi bật `LLM_USE_LLM_ROUTE=1`:
 
 **Luồng LLM:** prompt chuyên gia toán/khoa học, tự tính nội bộ, output JSON answer.
 
-**Heuristic fallback** (`domains/math.py`) — các solver chuyên biệt:
-- Phương trình suy giảm tuyến tính `dB/dt = -kB`
-- Hệ số co giãn trung điểm (kinh tế)
-- GDP deflator / lạm phát
-- Fallback cuối: chọn đáp án số gần nhất với kết quả tính được
+**Heuristic fallback & Early Exit** (`domains/math.py`) — các solver chuyên biệt:
+- **GDP deflator / lạm phát**: Tính toán tỷ lệ lạm phát/chỉ số giảm phát GDP.
+- **Hệ số co giãn trung điểm**: Tính toán co giãn cung cầu.
+- **Suy giảm tuyến tính**: Giải phương trình vi phân phóng xạ/nhiệt phân `dB/dt = -kB`.
+- **Số nhân tiền tệ (Money Multiplier)**: Tính toán `1 / reserve_ratio` (dạng tỷ lệ %).
+- **Lãi suất hiệu quả hàng năm (Effective Annual Rate)**: Hỗ trợ kỳ bán niên (n=2), hàng quý (n=4), hàng tháng (n=12).
+- **Vòng quay hàng tồn kho (Inventory Turnover)**: Tính toán hàng tồn kho trung bình `COGS_new / ratio` hỗ trợ tỷ lệ tăng/giảm COGS.
+- **Cân bằng cung cầu (Shortage/Surplus)**: Tự động đánh giá các phương trình tuyến tính $Q_d(P)$ và $Q_s(P)$ dưới tác động của trần/sàn giá để tìm lượng thiếu hụt/dư thừa.
+- **Cournot duopoly**: Tìm lượng cân bằng Nash phân tích dạng $\frac{a-c}{3}$.
 
 ### 5.3. Multi-domain
 
 **Luồng LLM:** prompt tổng hợp, chiến lược loại trừ, kiểm tra từng vế đáp án.
+* **Cập nhật Prompts:** Thêm cảnh báo mạnh đối với bẫy "Tất cả các phương án trên" / "Cả A, B, C đều đúng" trong câu hỏi lịch sử/chính trị/HCM. Thêm quy tắc loại trừ từng bước cho các câu hỏi phức tạp có tới 10 lựa chọn (từ A đến J).
 
 **Heuristic fallback:** lexical overlap giữa câu hỏi và choices.
 
 ### 5.4. Should-correct
 
 **Luồng LLM:** prompt kiểm tra đúng/sai — hỏi "sai/ngoại trừ" thì chọn đáp án sai; hỏi "đúng" thì chọn đáp án đúng.
+* **Cập nhật Prompts:** Tương tự `multi_domain`, cảnh giác cao độ với lựa chọn "Tất cả" đối với tư tưởng chính trị và hướng dẫn so sánh chi tiết khi số lượng đáp án lớn (5+).
 
 **Heuristic fallback:** keyword matching (`sai`, `không đúng`, `đúng`, `chính xác`) trên question và choices.
 
@@ -277,21 +285,33 @@ Thứ tự fallback:
 
 ## 8. Chiến lược Fallback
 
-Hệ thống có **3 lớp fallback** đảm bảo luôn trả về đáp án hợp lệ:
+Hệ thống tích hợp **4 lớp fallback & tối ưu** đảm bảo luôn trả về đáp án hợp lệ và giảm chi phí LLM:
 
 ```
-LLM answer thành công + parse OK
-        │ (fail)
-        ▼
-Heuristic domain solver (lexical / math / BM25)
-        │ (fail route)
-        ▼
-Default: multi_domain + nhãn A
+┌──────────────────────────────────────────────┐
+│  Early Exit specialized solvers (Mọi domain) │  (Nếu khớp công thức/tính toán → Trả kết quả ngay)
+└──────────────────────┬───────────────────────┘
+                       │ (Không khớp)
+                       ▼
+┌──────────────────────────────────────────────┐
+│  LLM answer thành công + parse JSON OK        │
+└──────────────────────┬───────────────────────┘
+                       │ (Lỗi/Parse fail)
+                       ▼
+┌──────────────────────────────────────────────┐
+│  Heuristic domain solver (lexical / math)    │
+└──────────────────────┬───────────────────────┘
+                       │ (Lỗi/Không khớp)
+                       ▼
+┌──────────────────────────────────────────────┐
+│  Default: multi_domain + nhãn A             │
+└──────────────────────────────────────────────┘
 ```
 
 | Tình huống | Hành vi |
 |------------|---------|
 | Không có model / mode=heuristic | Toàn bộ heuristic |
+| Khớp công thức chuyên biệt | Giải tự động bằng Specialized Solvers (Early Exit trên mọi domain) |
 | LLM route lỗi | Heuristic router |
 | LLM answer lỗi / parse fail | Heuristic solver của domain |
 | Domain = ignore_answer | Heuristic trực tiếp (bỏ qua LLM) |
@@ -316,7 +336,11 @@ Few-shot được inject vào `ROUTER_SYSTEM_PROMPT` khi dùng LLM router.
 
 ## 10. Kết quả thực nghiệm
 
-### 10.1. Độ chính xác (public test, 463 câu)
+### 10.1. Độ chính xác định tuyến (Router Accuracy)
+* **Độ chính xác phân loại của Heuristic Router mới:** **83.37% (386/463 câu)** so với nhãn Gold.
+* Các trường hợp lệch hầu hết rơi vào nhóm "lệch có lợi" (ví dụ: `multi_domain` chứa tính toán được đẩy sang `math`), giúp kích hoạt sớm bộ giải Specialized Solvers.
+
+### 10.2. Độ chính xác (public test, 463 câu - Lan 1)
 
 | Domain | Đúng / Tổng | Tỷ lệ |
 |--------|-------------|-------|
@@ -326,6 +350,7 @@ Few-shot được inject vào `ROUTER_SYSTEM_PROMPT` khi dùng LLM router.
 | should_correct | 31 / 50 | 62.0% |
 | multi_domain | 122 / 182 | 67.0% |
 | **Tổng** | **303 / 463** | **65.4%** |
+| **Dự kiến Lan 2** | **~315 - 325 / 463** | **~68% - 70%** |
 
 ### 10.2. Cải thiện qua các vòng
 
