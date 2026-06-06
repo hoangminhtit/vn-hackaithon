@@ -4,17 +4,30 @@ from typing import Dict, Optional
 from domains.common import lexical_best_choice, normalize_for_match
 
 
-NUMBER_RE = re.compile(r"[-+]?\d*[.,]?\d+")
+NUMBER_RE = re.compile(r"[-+]?\d+(?:[.,]\d+)*")
+
+
+def _parse_vn_number(raw: str) -> Optional[float]:
+    s = raw.strip()
+    if not s:
+        return None
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif "," in s:
+        s = s.replace(",", ".")
+    elif re.fullmatch(r"\d{1,3}(?:\.\d{3})+", s):
+        s = s.replace(".", "")
+    try:
+        return float(s)
+    except ValueError:
+        return None
 
 
 def _extract_number(text: str) -> Optional[float]:
-    match = NUMBER_RE.search(text.replace(",", "."))
+    match = NUMBER_RE.search(text)
     if not match:
         return None
-    try:
-        return float(match.group())
-    except ValueError:
-        return None
+    return _parse_vn_number(match.group())
 
 
 def _pick_closest_numeric_choice(choices: Dict[str, str], target: float) -> Optional[str]:
@@ -46,7 +59,8 @@ def _solve_midpoint_elasticity(question: str, choices: Dict[str, str]) -> Option
     if "co giãn" not in qn:
         return None
 
-    nums = [float(n) for n in NUMBER_RE.findall(question.replace(",", "."))]
+    nums = [_parse_vn_number(n) for n in NUMBER_RE.findall(question)]
+    nums = [n for n in nums if n is not None]
     if len(nums) < 4:
         return None
     p1, q1, p2, q2 = nums[0], nums[1], nums[2], nums[3]
@@ -70,7 +84,8 @@ def _solve_gdp_deflator(question: str, choices: Dict[str, str]) -> Optional[str]
     if not (has_gdp and has_nominal and has_real):
         return None
 
-    nums = [float(n) for n in NUMBER_RE.findall(question.replace(",", "."))]
+    nums = [_parse_vn_number(n) for n in NUMBER_RE.findall(question)]
+    nums = [n for n in nums if n is not None]
     if len(nums) < 2:
         return None
 
@@ -92,19 +107,27 @@ def _solve_gdp_deflator(question: str, choices: Dict[str, str]) -> Optional[str]
     return _pick_closest_numeric_choice(choices, deflator)
 
 
+_SPECIALIZED_SOLVERS = (
+    _solve_linear_decay,
+    _solve_midpoint_elasticity,
+    _solve_gdp_deflator,
+)
+
+
+def solve_specialized(question: str, choices: Dict[str, str]) -> Optional[str]:
+    for solver in _SPECIALIZED_SOLVERS:
+        result = solver(question, choices)
+        if result:
+            return result
+    return None
+
+
 def solve(processed: Dict) -> str:
     question = processed["question"]
     choices = processed["choices"]
 
-    solvers = [
-        _solve_linear_decay,
-        _solve_midpoint_elasticity,
-        _solve_gdp_deflator,
-    ]
-
-    for solver in solvers:
-        result = solver(question, choices)
-        if result:
-            return result
+    result = solve_specialized(question, choices)
+    if result:
+        return result
 
     return lexical_best_choice(question, choices)

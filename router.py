@@ -184,6 +184,21 @@ def _has_science_units(question: str) -> bool:
     return bool(SCIENCE_UNITS_RE.search(question))
 
 
+CALC_INTENT_HINTS = [
+    "tính ",
+    "tính toán",
+    "giải ",
+    "tìm ",
+    "bằng bao nhiêu",
+    "bao nhiêu",
+    "xác định giá trị",
+]
+
+
+def _has_calculation_intent(question: str) -> bool:
+    return any(h in question for h in CALC_INTENT_HINTS) and bool(re.search(r"\d", question))
+
+
 def _is_theory_question(question: str) -> bool:
     return any(h in question for h in THEORY_OVERRIDE_HINTS)
 
@@ -224,13 +239,17 @@ def route_question(processed: Dict) -> Dict:
     is_policy = any(h in question for h in POLICY_HINTS)
 
     sc_hits = sum(1 for h in SHOULD_CORRECT_HINTS if h in question)
-    if sc_hits > 0 and not has_math_expr and not has_formula:
+    wants_calc = _has_calculation_intent(question)
+    if sc_hits > 0 and not has_math_expr and not has_formula and not wants_calc:
         return {"domain": "should_correct", "confidence": 0.88 if is_theory else 0.85}
 
     has_numbers = _has_numeric_data(question)
     has_units = _has_science_units(processed["question"])
     strong_hits = sum(1 for h in MATH_STRONG_HINTS if h in question)
     weak_hits = sum(1 for h in MATH_WEAK_HINTS if h in question)
+
+    if wants_calc and has_numbers:
+        return {"domain": "science", "confidence": 0.92}
 
     if is_policy and not has_formula:
         return {"domain": "multi_domain", "confidence": 0.80}
