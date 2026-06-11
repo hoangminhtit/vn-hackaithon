@@ -65,6 +65,17 @@ def _llm_route_or_fallback(processed: Dict, llm_client: Optional[LLMClient]) -> 
 def _llm_answer_or_fallback(
     processed: Dict, domain: str, llm_client: Optional[LLMClient]
 ) -> Tuple[str, str, bool]:
+    """Giải câu hỏi MCQ bằng cách kết hợp Heuristic Solvers và LLM với nhiều tầng fallback.
+
+    Luồng ưu tiên:
+    1. Heuristic-only: Nếu không dùng LLM, chạy trực tiếp heuristic solver tương ứng của domain.
+    2. Ignore-answer: Early exit bằng heuristic quét pattern từ chối trực tiếp (bỏ qua LLM).
+    3. Specialized math solvers: Kiểm tra nhanh các bài toán đặc thù bằng công thức cứng (Early exit).
+    4. Program of Thought (PoT): Dùng Python sandbox để giải các câu hỏi định lượng/ký hiệu toán học.
+    5. Chain of Thought (CoT): Suy luận từng bước trước khi trích xuất kết quả cho các câu hỏi lý thuyết phức tạp.
+    6. LLM Standard chat: Chat trực tiếp với prompt chuyên biệt của từng domain.
+    7. Fallback: Nếu tất cả các bước LLM/sandbox lỗi hoặc parse thất bại, quay về heuristic solver tương ứng.
+    """
     if llm_client is None:
         return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed), "", True
 

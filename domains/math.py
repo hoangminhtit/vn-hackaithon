@@ -377,6 +377,13 @@ def solve_specialized(question: str, choices: Dict[str, str]) -> Optional[str]:
 
 
 def solve(processed: Dict) -> str:
+    """Giải quyết câu hỏi thuộc science (math) domain bằng heuristic.
+
+    - Đầu tiên thử qua các Specialized Solvers (Early Exit) được liệt kê trong _SPECIALIZED_SOLVERS.
+      Các solver này được thiết kế để giải quyết nhanh các bài toán kinh tế, vật lý, hóa học, ma trận...
+      như đã mô tả trong tài liệu phương pháp PHUONG_PHAP.md (Section 5.2).
+    - Nếu không khớp solver nào, fallback về lexical_best_choice.
+    """
     question = processed["question"]
     choices = processed["choices"]
 

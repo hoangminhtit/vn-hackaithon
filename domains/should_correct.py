@@ -5,6 +5,10 @@ from prompts import question_polarity
 
 
 def solve(processed: Dict) -> str:
+    """Giải quyết câu hỏi thuộc should_correct domain bằng heuristic.
+
+    Dựa vào prompts.question_polarity để xác định hướng phát biểu (đúng hay sai) nhằm tìm nhãn chứa từ khóa phủ định/khẳng định tương ứng.
+    """
     polarity = question_polarity(processed["question"])
     choices = processed["choices"]
 
