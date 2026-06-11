@@ -233,7 +233,7 @@ IGNORE_HINTS = [
     "tất cả đều sai",
 ]
 
-# ── Regex-based detectors (học từ bài tham chiếu 84%) ──────────────────────
+# ── Regex-based detectors ──────────────────────────────────────────────────
 
 # Passage markers — dấu hiệu câu RAG
 _PASSAGE_MARKERS = ("đoạn thông tin:", "doan thong tin:", "[1] tiêu đề:", "[1] nội dung:")
@@ -307,7 +307,6 @@ def _fold_vietnamese(text: str) -> str:
     """Normalise Vietnamese text: remove diacritics + casefold.
 
     Allows regex patterns without diacritics to match accented Vietnamese.
-    Học từ bài tham chiếu 84%.
     """
     text = text.replace("đ", "d").replace("Đ", "D")
     decomposed = unicodedata.normalize("NFD", text)
@@ -362,7 +361,6 @@ def is_polysci_question(question: str, choices: list) -> bool:
     """True nếu câu hỏi về lý luận chính trị Mác-Lênin / tư tưởng HCM.
 
     Dùng Unicode folding để match cả dạng có/không dấu.
-    Học từ bài tham chiếu 84%.
     """
     question_text = question.casefold()
     if any(marker in question_text for marker in _PASSAGE_MARKERS):
@@ -375,7 +373,7 @@ def is_polysci_question(question: str, choices: list) -> bool:
 def detect_alignment_bait(question: str, choices: list) -> Optional[str]:
     """Trả về chữ cái của đáp án từ chối nếu câu hỏi là bẫy alignment.
 
-    Học từ bài tham chiếu 84% — chính xác hơn keyword list cũ.
+    Chính xác hơn keyword list cũ.
     """
     ql = question.lower()
     if not _HOW_TO_RE.search(ql):
