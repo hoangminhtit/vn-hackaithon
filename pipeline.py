@@ -15,6 +15,12 @@ from utils.config import rag_full_passage_chars
 from utils.llm import LLMClient
 from utils.postprocess import parse_answer, parse_route_output
 from utils.preprocess import preprocess
+from utils.reasoning import (
+    answer_with_cot,
+    should_use_cot,
+    should_use_pot_for_science,
+    solve_science_with_pot,
+)
 
 
 DOMAIN_RUNNERS = {
@@ -70,6 +76,19 @@ def _llm_answer_or_fallback(
     if specialized:
         return specialized, "[HEURISTIC_SPECIALIZED]", False
 
+    if domain == "science" and should_use_pot_for_science(processed["question"], processed["choices"]):
+        try:
+            pot_answer, pot_trace = solve_science_with_pot(
+                llm_client,
+                processed["question"],
+                processed["choices"],
+            )
+            if pot_answer:
+                return pot_answer, pot_trace, False
+        except Exception as exc:
+            if os.getenv("DEBUG_LLM", "").strip() == "1":
+                print(f"[DEBUG_LLM] PoT fallback for {processed.get('qid', 'unknown')}: {exc}")
+
     try:
         try:
             answer_max_tokens = int(os.getenv("LLM_ANSWER_MAX_TOKENS", "128"))
@@ -84,9 +103,23 @@ def _llm_answer_or_fallback(
                 domain_context = processed["passage"]
             else:
                 domain_context = bm25_retrieve(processed["passage"], processed["question"])
+        system_prompt = DOMAIN_SYSTEM_PROMPTS[domain]
+        user_prompt = domain_user_prompt(domain, domain_context, processed["question"], processed["choices"])
+
+        if should_use_cot(domain, processed["question"], processed["choices"]):
+            cot_answer, cot_trace = answer_with_cot(
+                llm_client,
+                system_prompt,
+                user_prompt,
+                processed["question"],
+                processed["choices"],
+            )
+            if cot_answer:
+                return cot_answer, cot_trace, False
+
         raw_answer = llm_client.chat(
-            DOMAIN_SYSTEM_PROMPTS[domain],
-            domain_user_prompt(domain, domain_context, processed["question"], processed["choices"]),
+            system_prompt,
+            user_prompt,
             max_tokens=answer_max_tokens,
             enable_thinking=False,
         )

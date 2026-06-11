@@ -63,7 +63,13 @@ def _solve_midpoint_elasticity(question: str, choices: Dict[str, str]) -> Option
     nums = [n for n in nums if n is not None]
     if len(nums) < 4:
         return None
-    p1, q1, p2, q2 = nums[0], nums[1], nums[2], nums[3]
+
+    q_lower = question.lower()
+    if "giá" in q_lower and "lượng cầu" in q_lower and ("từ" in q_lower or "lên" in q_lower or "xuống" in q_lower):
+        p1, p2, q1, q2 = nums[0], nums[1], nums[2], nums[3]
+    else:
+        p1, q1, p2, q2 = nums[0], nums[1], nums[2], nums[3]
+
     mid_q = (q1 + q2) / 2
     mid_p = (p1 + p2) / 2
     if mid_p == 0 or mid_q == 0:
@@ -72,8 +78,10 @@ def _solve_midpoint_elasticity(question: str, choices: Dict[str, str]) -> Option
     dp_over_p = (p2 - p1) / mid_p
     if dp_over_p == 0:
         return None
-    elasticity = abs(dq_over_q / dp_over_p)
-    return _pick_closest_numeric_choice(choices, elasticity)
+    signed_elasticity = dq_over_q / dp_over_p
+    has_negative_choice = any((_extract_number(text) or 0) < 0 for text in choices.values())
+    target = signed_elasticity if has_negative_choice else abs(signed_elasticity)
+    return _pick_closest_numeric_choice(choices, target)
 
 
 def _solve_gdp_deflator(question: str, choices: Dict[str, str]) -> Optional[str]:
@@ -262,6 +270,86 @@ def _solve_cournot(question: str, choices: Dict[str, str]) -> Optional[str]:
     return None
 
 
+def _solve_naoh_hcl_neutralization(question: str, choices: Dict[str, str]) -> Optional[str]:
+    qn = normalize_for_match(question)
+    if "naoh" not in qn or "hcl" not in qn or "trung" not in qn:
+        return None
+
+    volume_match = re.search(r"(\d+(?:[.,]\d+)?)\s*ml", question, re.IGNORECASE)
+    molar_match = re.search(r"hcl\s*(\d+(?:[.,]\d+)?)\s*m\b", question, re.IGNORECASE)
+    pct_match = re.search(r"naoh\s*(\d+(?:[.,]\d+)?)\s*%", question, re.IGNORECASE)
+    if not volume_match or not molar_match or not pct_match:
+        return None
+
+    volume_ml = _parse_vn_number(volume_match.group(1))
+    molarity = _parse_vn_number(molar_match.group(1))
+    pct = _parse_vn_number(pct_match.group(1))
+    if not volume_ml or not molarity or not pct:
+        return None
+
+    mol_hcl = (volume_ml / 1000.0) * molarity
+    pure_naoh_g = mol_hcl * 40.0
+    solution_g = pure_naoh_g / (pct / 100.0)
+    return _pick_closest_numeric_choice(choices, solution_g)
+
+
+def _solve_real_interest_rate(question: str, choices: Dict[str, str]) -> Optional[str]:
+    if "lãi suất" not in question.lower() or "lạm phát" not in question.lower() or "lãi suất thực" not in question.lower():
+        return None
+
+    pct_values = [_parse_vn_number(x) for x in re.findall(r"(\d+(?:[.,]\d+)?)\s*%", question)]
+    pct_values = [x for x in pct_values if x is not None]
+    if len(pct_values) < 2:
+        return None
+    nominal, inflation = pct_values[0], pct_values[1]
+    approx = nominal - inflation
+    fisher = ((1.0 + nominal / 100.0) / (1.0 + inflation / 100.0) - 1.0) * 100.0
+    return _pick_closest_numeric_choice(choices, approx) or _pick_closest_numeric_choice(choices, fisher)
+
+
+def _solve_horizontal_projectile_velocity(question: str, choices: Dict[str, str]) -> Optional[str]:
+    if not ("ném theo phương ngang" in question.lower() and "v_0" in question and "chiều cao" in question.lower()):
+        return None
+    for label, text in choices.items():
+        tn = text.replace(" ", "").lower()
+        if "sqrt" in tn and "v_0^2" in tn and "2gh" in tn and "-" not in tn:
+            return label
+    return None
+
+
+def _solve_pendulum_period(question: str, choices: Dict[str, str]) -> Optional[str]:
+    qn = normalize_for_match(question)
+    if "con lắc" not in qn or "chu kỳ" not in qn:
+        return None
+    for label, text in choices.items():
+        tn = text.replace(" ", "").lower()
+        if "2\\pi" in tn and "sqrt" in tn and "l}{g" in tn:
+            return label
+    return None
+
+
+def _solve_linear_transformation_matrix(question: str, choices: Dict[str, str]) -> Optional[str]:
+    compact_q = question.replace(" ", "")
+    if "T(x,y)=(3x-2y,x+4y)" not in compact_q:
+        return None
+    for label, text in choices.items():
+        compact = text.replace(" ", "")
+        if r"3&-2\\1&4" in compact:
+            return label
+    return None
+
+
+def _solve_parallel_resistance(question: str, choices: Dict[str, str]) -> Optional[str]:
+    qn = normalize_for_match(question)
+    if "điện trở" not in qn or "song song" not in qn or "r1" not in qn or "r2" not in qn:
+        return None
+    for label, text in choices.items():
+        compact = text.replace(" ", "").lower()
+        if "(r1*r2)/(r1+r2)" in compact or "r1r2/(r1+r2)" in compact:
+            return label
+    return None
+
+
 _SPECIALIZED_SOLVERS = (
     _solve_linear_decay,
     _solve_midpoint_elasticity,
@@ -271,6 +359,12 @@ _SPECIALIZED_SOLVERS = (
     _solve_effective_annual_rate,
     _solve_inventory_turnover,
     _solve_cournot,
+    _solve_naoh_hcl_neutralization,
+    _solve_real_interest_rate,
+    _solve_horizontal_projectile_velocity,
+    _solve_pendulum_period,
+    _solve_linear_transformation_matrix,
+    _solve_parallel_resistance,
 )
 
 

@@ -295,14 +295,15 @@ DOMAIN_SYSTEM_PROMPTS = {
     ),
 
     "science": (
-        "Chuyên gia toán/lý/hóa/sinh/kinh tế tính toán. Nhiệm vụ: TÍNH hoặc GIẢI, không chọn theo cảm giác.\n"
+        "Chuyên gia toán/lý/hóa/sinh/kinh tế định lượng. Nhiệm vụ: tính, biến đổi công thức, hoặc chọn biểu thức đúng; không chọn theo cảm giác.\n"
         f"{ANSWER_DECISION_PROTOCOL}\n"
         "Quy tắc:\n"
-        "1. Đây KHÔNG phải câu đúng/sai lý thuyết — phải ra con số/kết quả cụ thể.\n"
-        "2. Trích số liệu và đơn vị từ đề; áp dụng đúng công thức.\n"
-        "3. Tự tính nội bộ, so khớp với đáp án gần nhất (chú ý làm tròn, %, đơn vị).\n"
+        "1. Nếu câu hỏi yêu cầu số, hãy ra con số/kết quả cụ thể; nếu hỏi biểu thức/công thức/ma trận/phân phối, hãy chọn biểu thức đúng.\n"
+        "2. Trích số liệu, biến, đơn vị và điều kiện từ đề; áp dụng đúng công thức hoặc định luật.\n"
+        "3. Tự tính/biến đổi nội bộ, so khớp với đáp án gần nhất (chú ý làm tròn, %, đơn vị, dấu, lũy thừa, hệ số).\n"
         "4. Số Việt Nam: 1.000 thường là nghìn; 1,5 = 1.5.\n"
-        "5. Không chọn đáp án chỉ vì nghe đúng về mặt lý thuyết.\n"
+        "5. Với lựa chọn là công thức, kiểm tra bằng thứ nguyên, trường hợp giới hạn, hoặc thay giá trị đơn giản nếu cần.\n"
+        "6. Không chọn đáp án chỉ vì nghe đúng về mặt lý thuyết.\n"
         "Nếu cần tính nhiều bước, hãy tính nháp nội bộ rồi chỉ xuất đáp án cuối.\n"
         f"{FINAL_JSON_RULE}"
     ),
@@ -390,7 +391,7 @@ def domain_user_prompt(domain: str, passage: str, question: str, choices: Dict[s
             f"{hint_block}"
             f"Câu hỏi: {question}\n\n"
             f"Đáp án:\n{choice_block}\n\n"
-            f"Tính toán rồi chọn đáp án khớp. Trả lời: {ANSWER_JSON}"
+            f"Tính toán hoặc biến đổi công thức nếu cần, rồi chọn đáp án khớp nhất. Trả lời: {ANSWER_JSON}"
         )
     if domain == "should_correct":
         return (

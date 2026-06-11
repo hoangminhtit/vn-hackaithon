@@ -294,13 +294,20 @@ class LLMClient:
             max_new_tokens = 256
         return cls(model_id=model, max_new_tokens=max_new_tokens)
 
-    def chat(self, system_prompt: str, user_prompt: str, max_tokens: int = 256, enable_thinking: bool = False) -> str:
+    def chat(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 256,
+        enable_thinking: bool = False,
+        apply_global_cap: bool = True,
+    ) -> str:
         """Send a chat-completion request and return the assistant's text reply."""
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        max_output_tokens = min(max_tokens, self.max_new_tokens)
+        max_output_tokens = min(max_tokens, self.max_new_tokens) if apply_global_cap else max_tokens
 
         with self._lock:
             response = self.model.create_chat_completion(

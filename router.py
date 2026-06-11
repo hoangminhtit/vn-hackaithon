@@ -146,6 +146,21 @@ SHOULD_CORRECT_HINTS = [
     "cốt lõi là",
 ]
 
+SCIENCE_SYMBOLIC_HINTS = [
+    "biểu thức",
+    "công thức",
+    "ma trận",
+    "phân phối",
+    "chu kỳ",
+    "vận tốc",
+    "lưu lượng",
+    "điện trở tương đương",
+    "dẫn nhiệt",
+    "con lắc",
+    "poiseuille",
+    "phương trình vi phân",
+]
+
 POLICY_HINTS = [
     "nghị quyết",
     "quyết định số",
@@ -282,6 +297,11 @@ SCIENCE_UNITS_RE = re.compile(
     re.IGNORECASE
 )
 
+FORMULA_CHOICE_RE = re.compile(
+    r"\\(?:frac|sqrt|begin|text|pi)|\^|_\{|[A-Za-z]\s*=|[A-Za-z]\([^)]*\)\s*=|\$",
+    re.IGNORECASE,
+)
+
 
 def _fold_vietnamese(text: str) -> str:
     """Normalise Vietnamese text: remove diacritics + casefold.
@@ -307,6 +327,13 @@ def _has_numeric_data(question: str) -> bool:
 
 def _has_science_units(question: str) -> bool:
     return bool(SCIENCE_UNITS_RE.search(question))
+
+
+def _mostly_formula_choices(choices: list) -> bool:
+    if not choices:
+        return False
+    hits = sum(1 for choice in choices if FORMULA_CHOICE_RE.search(str(choice)))
+    return hits >= max(2, len(choices) // 2)
 
 
 def is_law_question(question: str, choices: list) -> bool:
@@ -475,12 +502,16 @@ def route_question(processed: Dict) -> Dict:
     sc_hits = sum(1 for h in SHOULD_CORRECT_HINTS if h in question)
     wants_calc = _has_calculation_intent(question)
     is_quant_reasoning = any(w in question for w in QUANT_KEYWORDS) and any(w in question for w in QUANT_REASONING)
+    formula_choices = _mostly_formula_choices(choices_list)
+    symbolic_science = has_formula and (
+        formula_choices or any(h in question for h in SCIENCE_SYMBOLIC_HINTS)
+    )
 
     # Politics/HCM questions → should_correct trừ khi có tính toán
     if is_politics and not has_formula and not has_math_expr:
         return {"domain": "should_correct", "confidence": 0.88}
 
-    if sc_hits > 0 and not has_math_expr and not has_formula and not wants_calc and not is_quant_reasoning:
+    if sc_hits > 0 and not has_math_expr and not symbolic_science and not wants_calc and not is_quant_reasoning:
         return {"domain": "should_correct", "confidence": 0.88 if is_theory else 0.85}
 
     has_numbers = _has_numeric_data(question)
@@ -500,6 +531,8 @@ def route_question(processed: Dict) -> Dict:
 
     # LaTeX-only (has_formula) doesn't auto-route to science if it lacks calculation intent or strong math hints
     if has_formula:
+        if symbolic_science and not is_policy and not is_politics:
+            return {"domain": "science", "confidence": 0.88}
         if wants_calc or is_quant_reasoning or strong_hits >= 1:
             return {"domain": "science", "confidence": 0.90}
 

@@ -120,6 +120,10 @@ LLM_USE_LLM_ROUTE=0
 | `LLM_MAX_NEW_TOKENS` | Trần token sinh |
 | `LLM_ANSWER_MAX_TOKENS` | Token bước trả lời |
 | `LLM_USE_LLM_ROUTE` | `0` = route heuristic (nhanh), `1` = LLM route |
+| `LLM_USE_POT_SCIENCE` | `1` = dùng Program-of-Thought/Python cho câu science phù hợp |
+| `LLM_USE_COT_SHOULD_CORRECT` | `1` = dùng CoT 2 bước cho should_correct |
+| `LLM_USE_COT_MULTI` | `1` = dùng CoT có điều kiện cho multi_domain khó |
+| `LLM_POT_MAX_TOKENS`, `LLM_COT_MAX_TOKENS` | Token cho nhánh reasoning, không bị giới hạn bởi `LLM_MAX_NEW_TOKENS` |
 | `LLAMA_N_GPU_LAYERS` | `-1` = all GPU, `0` = CPU only |
 | `LLAMA_N_CTX` | Context window (mặc định `4096`) |
 
