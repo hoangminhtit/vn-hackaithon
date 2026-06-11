@@ -2,7 +2,7 @@ import argparse
 import csv
 import json
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from pipeline import run_pipeline
 from utils.input_loader import read_items, resolve_competition_input
@@ -48,7 +48,7 @@ def write_jsonl(path: str, rows: List[Dict]) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def _resolve_input_path(cli_input: str | None) -> str:
+def _resolve_input_path(cli_input: Optional[str]) -> str:
     if cli_input:
         return cli_input
     if os.getenv("COMPETITION", "").strip() == "1":
@@ -56,7 +56,7 @@ def _resolve_input_path(cli_input: str | None) -> str:
     return "data/public-test_1780368312.json"
 
 
-def _resolve_output_path(cli_output: str | None) -> str:
+def _resolve_output_path(cli_output: Optional[str]) -> str:
     if cli_output:
         return cli_output
     if os.getenv("COMPETITION", "").strip() == "1":

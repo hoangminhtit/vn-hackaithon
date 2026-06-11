@@ -12,4 +12,5 @@ model/
 *.py[cod]
 *$py.class
 logs/
+vsds-c-agent/
 vsds-hackaithon-2026.ipynb

@@ -40,6 +40,37 @@ WANT_TRUE_HINTS = (
 )
 
 THEO_HINTS = ("theo ", "theo quan điểm", "theo tư tưởng", "theo quy định", "theo luật", "theo hiến pháp")
+LEGAL_HINTS = (
+    "luật",
+    "bộ luật",
+    "hiến pháp",
+    "nghị định",
+    "thông tư",
+    "điều ",
+    "khoản ",
+    "pháp luật",
+    "hình sự",
+    "dân sự",
+    "xử phạt",
+    "vi phạm",
+)
+POLYSCI_HINTS = (
+    "hồ chí minh",
+    "tư tưởng",
+    "mác",
+    "lênin",
+    "chủ nghĩa xã hội",
+    "chủ nghĩa cộng sản",
+    "duy vật",
+    "biện chứng",
+    "kinh tế chính trị",
+    "giá trị thặng dư",
+    "đảng cộng sản",
+    "cương lĩnh",
+    "đại hội đảng",
+    "lực lượng sản xuất",
+    "quan hệ sản xuất",
+)
 
 
 def format_choices(choices: Dict[str, str]) -> str:
@@ -77,6 +108,14 @@ def _domain_hint_block(domain: str, question: str) -> str:
         else:
             lines.append("Đọc kỹ câu hỏi để biết cần tìm phát biểu đúng hay sai.")
         lines.append("Đánh giá từng đáp án A,B,C,D độc lập trước khi chọn.")
+        if any(h in q for h in LEGAL_HINTS):
+            lines.append(
+                "Với phát biểu pháp luật, kiểm tra đủ điều kiện, phạm vi áp dụng, chủ thể và từ khóa phủ định."
+            )
+        if any(h in q for h in POLYSCI_HINTS):
+            lines.append(
+                "Với phát biểu lý luận chính trị/tư tưởng, so khớp thuật ngữ chuẩn; cảnh giác đáp án gần đúng nhưng sai một cụm."
+            )
 
     elif domain == "science":
         lines.append(
@@ -96,6 +135,14 @@ def _domain_hint_block(domain: str, question: str) -> str:
             lines.append(
                 "Câu hỏi có 'Theo …' — trả lời theo quan điểm/văn bản được nêu, "
                 "không theo kiến thức chung khác."
+            )
+        if any(h in q for h in LEGAL_HINTS):
+            lines.append(
+                "Câu hỏi pháp luật — ưu tiên đúng thuật ngữ, chủ thể, điều kiện áp dụng và văn bản được nêu trong câu hỏi."
+            )
+        if any(h in q for h in POLYSCI_HINTS):
+            lines.append(
+                "Câu hỏi lý luận chính trị/tư tưởng — chọn theo khái niệm chuẩn trong giáo trình, tránh suy diễn đời thường."
             )
 
     elif domain == "rag":
@@ -119,6 +166,21 @@ def _all_options_hint(choices: Dict[str, str]) -> Optional[str]:
                 "Có đáp án 'Tất cả các phương án trên' — chỉ chọn nếu MỌI đáp án còn lại đều đúng."
             )
     return None
+
+
+def _many_choice_hint(choices: Dict[str, str]) -> Optional[str]:
+    """Warn the model when there are more than 4 options (A–J range).
+
+    Mirrors the bài tham chiếu logic in LLMAnswerer._many_choice_hint().
+    """
+    n = len(choices)
+    if n <= 4:
+        return None
+    last_letter = chr(ord("A") + n - 1)
+    return (
+        f"Lưu ý: có {n} lựa chọn từ A đến {last_letter}. "
+        "Hãy xem xét kỹ TẤT CẢ lựa chọn trước khi chọn — không dừng lại ở A/B/C/D."
+    )
 
 def load_few_shot_data():
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -187,7 +249,7 @@ QUY TẮC BẮT BUỘC:
 """
 
 
-def router_user_prompt(passage: str, question: str, num_choices: int, choices: Dict[str, str] | None = None) -> str:
+def router_user_prompt(passage: str, question: str, num_choices: int, choices: Optional[Dict[str, str]] = None) -> str:
     choices_str = ""
     if choices:
         choices_str = "\n".join(f"{label}. {text}" for label, text in choices.items())
@@ -202,9 +264,25 @@ def router_user_prompt(passage: str, question: str, num_choices: int, choices: D
 
 ANSWER_JSON = '{"answer":"X"}'
 
+ANSWER_DECISION_PROTOCOL = (
+    "Quy trình nội bộ bắt buộc trước khi trả lời:\n"
+    "1. Xác định chính xác câu hỏi đang yêu cầu chọn đáp án đúng, sai, ngoại trừ, hay kết quả tính toán.\n"
+    "2. Đọc toàn bộ lựa chọn từ A đến lựa chọn cuối; không dừng ở A/B/C/D nếu còn lựa chọn khác.\n"
+    "3. Đánh giá từng lựa chọn độc lập, loại các lựa chọn sai rõ ràng hoặc không khớp yêu cầu.\n"
+    "4. So sánh các lựa chọn còn lại để chọn đáp án tốt nhất, không chọn theo cảm giác quen thuộc.\n"
+    "5. Tự kiểm tra lần cuối: đáp án đã chọn có đúng cực tính câu hỏi và nằm trong tập lựa chọn hợp lệ không.\n"
+    "Không in các bước trên, không in giải thích, không markdown."
+)
+
+FINAL_JSON_RULE = (
+    f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON}. "
+    "Không thêm reason, không thêm text ngoài JSON."
+)
+
 DOMAIN_SYSTEM_PROMPTS = {
     "rag": (
         "Trả lời trắc nghiệm tiếng Việt CHỈ dựa trên context được cung cấp.\n"
+        f"{ANSWER_DECISION_PROTOCOL}\n"
         "Quy tắc:\n"
         "1. Đọc toàn bộ context trước; tìm đoạn/câu/bảng liên quan trực tiếp đến câu hỏi.\n"
         "2. Đáp án phải được context nêu rõ hoặc suy ra trực tiếp từ context.\n"
@@ -213,22 +291,26 @@ DOMAIN_SYSTEM_PROMPTS = {
         "5. Có bảng/số liệu → lấy đúng con số từ context, không tự tính nếu context đã cho kết quả.\n"
         "6. Không dùng kiến thức ngoài khi mâu thuẫn context.\n"
         "7. Đọc hết A,B,C,D — không mặc định chọn A.\n"
-        f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON}"
+        f"{FINAL_JSON_RULE}"
     ),
 
     "science": (
-        "Chuyên gia toán/lý/hóa/sinh/kinh tế tính toán. Nhiệm vụ: TÍNH hoặc GIẢI, không chọn theo cảm giác.\n"
+        "Chuyên gia toán/lý/hóa/sinh/kinh tế định lượng. Nhiệm vụ: tính, biến đổi công thức, hoặc chọn biểu thức đúng; không chọn theo cảm giác.\n"
+        f"{ANSWER_DECISION_PROTOCOL}\n"
         "Quy tắc:\n"
-        "1. Đây KHÔNG phải câu đúng/sai lý thuyết — phải ra con số/kết quả cụ thể.\n"
-        "2. Trích số liệu và đơn vị từ đề; áp dụng đúng công thức.\n"
-        "3. Tự tính nội bộ, so khớp với đáp án gần nhất (chú ý làm tròn, %, đơn vị).\n"
+        "1. Nếu câu hỏi yêu cầu số, hãy ra con số/kết quả cụ thể; nếu hỏi biểu thức/công thức/ma trận/phân phối, hãy chọn biểu thức đúng.\n"
+        "2. Trích số liệu, biến, đơn vị và điều kiện từ đề; áp dụng đúng công thức hoặc định luật.\n"
+        "3. Tự tính/biến đổi nội bộ, so khớp với đáp án gần nhất (chú ý làm tròn, %, đơn vị, dấu, lũy thừa, hệ số).\n"
         "4. Số Việt Nam: 1.000 thường là nghìn; 1,5 = 1.5.\n"
-        "5. Không chọn đáp án chỉ vì nghe đúng về mặt lý thuyết.\n"
-        f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON} — KHÔNG giải thích, KHÔNG markdown."
+        "5. Với lựa chọn là công thức, kiểm tra bằng thứ nguyên, trường hợp giới hạn, hoặc thay giá trị đơn giản nếu cần.\n"
+        "6. Không chọn đáp án chỉ vì nghe đúng về mặt lý thuyết.\n"
+        "Nếu cần tính nhiều bước, hãy tính nháp nội bộ rồi chỉ xuất đáp án cuối.\n"
+        f"{FINAL_JSON_RULE}"
     ),
 
     "multi_domain": (
         "Trả lời trắc nghiệm kiến thức tổng hợp tiếng Việt (lịch sử, địa lý, luật, chính trị, kinh tế, văn hóa).\n"
+        f"{ANSWER_DECISION_PROTOCOL}\n"
         "Quy tắc:\n"
         "1. KHÔNG tính toán — chọn theo sự kiện, quy định, khái niệm, định nghĩa.\n"
         "2. KHÔNG đánh giá đúng/sai kiểu should_correct trừ khi câu hỏi hỏi rõ 'đúng/sai'.\n"
@@ -239,11 +321,12 @@ DOMAIN_SYSTEM_PROMPTS = {
         "7. Cảnh giác với các phương án phủ quát như 'Tất cả các phương án trên' hoặc 'Cả a, b, c đều đúng' khi hỏi về tư tưởng Hồ Chí Minh hoặc các chủ đề lịch sử/chính trị. Thông thường chỉ có MỘT đáp án cụ thể là đúng và chính xác nhất. Không chọn phương án 'Tất cả' trừ khi bạn hoàn toàn chắc chắn mọi phương án đơn lẻ đều hoàn toàn đúng.\n"
         "8. Đối với các câu hỏi có rất nhiều đáp án lựa chọn (từ 5 đáp án trở lên, ví dụ A đến J), hãy so sánh các sự khác biệt nhỏ giữa từng phương án và loại trừ các đáp án chứa thông tin sai lệch/vô lý từng bước một.\n"
         "9. Đọc hết các lựa chọn trước khi chọn.\n"
-        f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON}"
+        f"{FINAL_JSON_RULE}"
     ),
 
     "should_correct": (
         "Kiểm tra tính ĐÚNG/SAI của từng phát biểu trong đáp án.\n"
+        f"{ANSWER_DECISION_PROTOCOL}\n"
         "Quy tắc BẮT BUỘC:\n"
         "1. ĐỌC CỰC KỸ câu hỏi — xác định hỏi ĐÚNG hay hỏi SAI trước khi chọn.\n"
         "2. Hỏi 'sai/không đúng/ngoại trừ/KHÔNG chính xác' → chọn đáp án SAI (dù các đáp án khác nghe đúng).\n"
@@ -253,7 +336,7 @@ DOMAIN_SYSTEM_PROMPTS = {
         "6. 'Tất cả các phương án trên' chỉ khi mọi đáp án còn lại đều đúng.\n"
         "7. Cảnh giác với các phương án phủ quát như 'Tất cả các phương án trên' hoặc 'Cả a, b, c đều đúng' khi hỏi về tư tưởng Hồ Chí Minh hoặc các chủ đề lịch sử/chính trị. Thông thường chỉ có MỘT đáp án cụ thể là đúng và chính xác nhất. Không chọn phương án 'Tất cả' trừ khi bạn hoàn toàn chắc chắn mọi phương án đơn lẻ đều hoàn toàn đúng.\n"
         "8. Đối với các câu hỏi có rất nhiều đáp án lựa chọn (từ 5 đáp án trở lên, ví dụ A đến J), hãy so sánh các sự khác biệt nhỏ giữa từng phương án và loại trừ các đáp án chứa thông tin sai lệch/vô lý từng bước một.\n"
-        f"OUTPUT: chỉ 1 dòng JSON {ANSWER_JSON}"
+        f"{FINAL_JSON_RULE}"
     ),
 
     "ignore_answer": (
@@ -289,9 +372,10 @@ def domain_user_prompt(domain: str, passage: str, question: str, choices: Dict[s
     ctx = passage[:rag_max_context_chars()] if passage else ""
     hint = _domain_hint_block(domain, question)
     all_opt = _all_options_hint(choices)
+    many_ch = _many_choice_hint(choices)
     hint_block = ""
-    if hint or all_opt:
-        parts = [p for p in (hint, all_opt) if p]
+    parts = [p for p in (hint, all_opt, many_ch) if p]
+    if parts:
         hint_block = "[HƯỚNG DẪN]\n" + "\n".join(parts) + "\n\n"
 
     if domain == "rag":
@@ -307,7 +391,7 @@ def domain_user_prompt(domain: str, passage: str, question: str, choices: Dict[s
             f"{hint_block}"
             f"Câu hỏi: {question}\n\n"
             f"Đáp án:\n{choice_block}\n\n"
-            f"Tính toán rồi chọn đáp án khớp. Trả lời: {ANSWER_JSON}"
+            f"Tính toán hoặc biến đổi công thức nếu cần, rồi chọn đáp án khớp nhất. Trả lời: {ANSWER_JSON}"
         )
     if domain == "should_correct":
         return (

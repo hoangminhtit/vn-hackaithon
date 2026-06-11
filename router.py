@@ -1,5 +1,6 @@
 import re
-from typing import Dict
+import unicodedata
+from typing import Dict, Optional
 
 
 MATH_STRONG_HINTS = [
@@ -145,6 +146,21 @@ SHOULD_CORRECT_HINTS = [
     "cốt lõi là",
 ]
 
+SCIENCE_SYMBOLIC_HINTS = [
+    "biểu thức",
+    "công thức",
+    "ma trận",
+    "phân phối",
+    "chu kỳ",
+    "vận tốc",
+    "lưu lượng",
+    "điện trở tương đương",
+    "dẫn nhiệt",
+    "con lắc",
+    "poiseuille",
+    "phương trình vi phân",
+]
+
 POLICY_HINTS = [
     "nghị quyết",
     "quyết định số",
@@ -217,6 +233,62 @@ IGNORE_HINTS = [
     "tất cả đều sai",
 ]
 
+# ── Regex-based detectors (học từ bài tham chiếu 84%) ──────────────────────
+
+# Passage markers — dấu hiệu câu RAG
+_PASSAGE_MARKERS = ("đoạn thông tin:", "doan thong tin:", "[1] tiêu đề:", "[1] nội dung:")
+
+# Pháp luật — bài viết điều luật
+_LAW_ARTICLE_RE = re.compile(r"\b(?:điều|dieu)\s+\d+", flags=re.IGNORECASE)
+_LAW_KEYWORD_RE = re.compile(
+    r"\b(?:"
+    r"bộ luật|bo luat|luật|luat|khoản|khoan|nghị định|nghi dinh|"
+    r"thông tư|thong tu|hiến pháp|hien phap|tội|hình sự|hinh su|"
+    r"dân sự|dan su|nghĩa vụ|nghia vu|trách nhiệm hình sự|"
+    r"trach nhiem hinh su|xử phạt|xu phat|vi phạm|vi pham|"
+    r"pháp luật|phap luat|hợp đồng|hop dong"
+    r")\b",
+    flags=re.IGNORECASE,
+)
+
+# Chính trị / lý luận Mác-Lênin — dùng Unicode folding để match cả có/không dấu
+_POLYSCI_KEYWORD_RE = re.compile(
+    r"\b(?:"
+    r"ho chi minh|tu tuong|mac|lenin|angghen|"
+    r"chu nghia|duy vat|bien chung|"
+    r"kinh te chinh tri|gia tri thang du|tich luy tu ban|"
+    r"chu nghia xa hoi|chu nghia cong san|"
+    r"cach mang|giai cap|vo san|"
+    r"dang cong san|dang ta|cuong linh|dai hoi dang|"
+    r"phuong thuc san xuat|luc luong san xuat|quan he san xuat|"
+    r"hinh thai kinh te|duy vat lich su|duy vat bien chung|"
+    r"y thuc xa hoi|ton tai xa hoi"
+    r")\b",
+    flags=re.IGNORECASE,
+)
+
+# Alignment bait — câu hỏi harmful + đáp án từ chối
+_HOW_TO_RE = re.compile(
+    r"làm thế nào|cách nào|phương thức|bằng cách nào|làm sao|"
+    r"cách hiệu quả|như thế nào|"
+    r"hành động nào|hành vi nào|"
+    r"thực hiện .{0,20}(?:nào|ra sao|thế nào)",
+    flags=re.IGNORECASE,
+)
+_VIOLATION_RE = re.compile(
+    r"vi phạm|trái pháp luật|trái quy định|phá hoại|tham nhũng|làm giả|"
+    r"lợi dụng chức vụ|lợi dụng quyền|xuyên tạc|bịa đặt|"
+    r"phát tán tài liệu mật|phát tán thông tin sai|"
+    r"xúc phạm(?:\s+các)?\s+(?:biểu tượng|lãnh tụ)|"
+    r"tạo ra văn bản trái|làm suy yếu|công chức.*tham nhũng|"
+    r"phá hoại tinh thần",
+    flags=re.IGNORECASE,
+)
+_REFUSAL_RE = re.compile(
+    r"tôi không thể|không thể trả lời|không thể cung cấp",
+    flags=re.IGNORECASE,
+)
+
 
 SCIENCE_UNITS_RE = re.compile(
     r"\d+\s*(?:hz|khz|mhz|ghz|v|kv|mv|ma|a|ω|ohm|f|μf|nf|pf|"
@@ -225,18 +297,95 @@ SCIENCE_UNITS_RE = re.compile(
     re.IGNORECASE
 )
 
+FORMULA_CHOICE_RE = re.compile(
+    r"\\(?:frac|sqrt|begin|text|pi)|\^|_\{|[A-Za-z]\s*=|[A-Za-z]\([^)]*\)\s*=|\$",
+    re.IGNORECASE,
+)
+
+
+def _fold_vietnamese(text: str) -> str:
+    """Normalise Vietnamese text: remove diacritics + casefold.
+
+    Allows regex patterns without diacritics to match accented Vietnamese.
+    Học từ bài tham chiếu 84%.
+    """
+    text = text.replace("đ", "d").replace("Đ", "D")
+    decomposed = unicodedata.normalize("NFD", text)
+    return "".join(
+        char for char in decomposed if unicodedata.category(char) != "Mn"
+    ).casefold()
+
 
 def _has_numeric_data(question: str) -> bool:
     clean_q = re.sub(r"\d+/\d+/[A-ZĐa-z0-9\-]+", "", question)
     clean_q = re.sub(r"\d+/\d+/\d+", "", clean_q)
     clean_q = re.sub(r"\b(1[89]\d{2}|20[0-2]\d)\b", "", clean_q)
-    
+
     numbers = re.findall(r"[-+]?\d+[.,]?\d*", clean_q)
     return len(numbers) >= 2 or ("%" in clean_q) or any(w in clean_q.lower() for w in ["đô la", "usd", "vnd", "đồng", "triệu", "tỷ"])
 
 
 def _has_science_units(question: str) -> bool:
     return bool(SCIENCE_UNITS_RE.search(question))
+
+
+def _mostly_formula_choices(choices: list) -> bool:
+    if not choices:
+        return False
+    hits = sum(1 for choice in choices if FORMULA_CHOICE_RE.search(str(choice)))
+    return hits >= max(2, len(choices) // 2)
+
+
+def is_law_question(question: str, choices: list) -> bool:
+    """True nếu câu hỏi liên quan đến pháp luật VN và không có passage.
+
+    """
+    question_text = question.casefold()
+    if any(marker in question_text for marker in _PASSAGE_MARKERS):
+        return False
+
+    text = "\n".join([question] + list(choices)).casefold()
+    if _LAW_ARTICLE_RE.search(text):
+        return True
+    match = _LAW_KEYWORD_RE.search(text)
+    if not match:
+        return False
+    # Tránh false positive: "quy luật" không phải pháp luật
+    if match.group(0) in {"luật", "luat"} and text[
+        max(0, match.start() - 4) : match.start()
+    ] == "quy ":
+        return False
+    return True
+
+
+def is_polysci_question(question: str, choices: list) -> bool:
+    """True nếu câu hỏi về lý luận chính trị Mác-Lênin / tư tưởng HCM.
+
+    Dùng Unicode folding để match cả dạng có/không dấu.
+    Học từ bài tham chiếu 84%.
+    """
+    question_text = question.casefold()
+    if any(marker in question_text for marker in _PASSAGE_MARKERS):
+        return False
+
+    text = _fold_vietnamese("\n".join([question] + list(choices)))
+    return _POLYSCI_KEYWORD_RE.search(text) is not None
+
+
+def detect_alignment_bait(question: str, choices: list) -> Optional[str]:
+    """Trả về chữ cái của đáp án từ chối nếu câu hỏi là bẫy alignment.
+
+    Học từ bài tham chiếu 84% — chính xác hơn keyword list cũ.
+    """
+    ql = question.lower()
+    if not _HOW_TO_RE.search(ql):
+        return None
+    if not _VIOLATION_RE.search(ql):
+        return None
+    for i, choice in enumerate(choices):
+        if _REFUSAL_RE.search(choice.lower()):
+            return chr(65 + i)
+    return None
 
 
 CALC_INTENT_HINTS = [
@@ -302,11 +451,19 @@ def route_question(processed: Dict) -> Dict:
     question = processed["question"].lower()
     passage = processed["passage"]
     choices = processed.get("choices", {})
+    choices_list = list(choices.values()) if choices else []
+    original_question = processed["question"]
+
     has_long_passage = bool(passage and (len(passage) > 200 or "được cung cấp" in question or "theo thông tin" in question))
 
-    choices_text = " ".join(v.lower() for v in choices.values()) if choices else ""
-    has_refuse_choice = any(kw in choices_text for kw in REFUSE_CHOICE_HINTS)
+    # ── Layer 1: Ignore-answer ── regex alignment bait (chính xác hơn) ───────
+    # Thử detect_alignment_bait trước — regex HOW_TO + VIOLATION + REFUSAL
+    if detect_alignment_bait(original_question, choices_list) is not None:
+        return {"domain": "ignore_answer", "confidence": 0.95}
 
+    # Fallback keyword list cũ cho ignore_answer (bao phủ thêm edge cases)
+    choices_text = " ".join(v.lower() for v in choices_list)
+    has_refuse_choice = any(kw in choices_text for kw in REFUSE_CHOICE_HINTS)
     if has_refuse_choice:
         has_harmful_pattern = any(h in question for h in HARMFUL_QUESTION_HINTS)
         has_harmful_intent = any(h in question for h in HARMFUL_INTENT_HINTS)
@@ -328,28 +485,37 @@ def route_question(processed: Dict) -> Dict:
     )
     if re.search(r"(1[89]\d{2}|20[0-2]\d)\s*-\s*", clean_q) and not re.search(r"[\d]+\s*[\+\*/=]", clean_q):
         has_math_expr = False
-    has_formula = bool(re.search(r"\$.*\$", processed["question"]))
+    has_formula = bool(re.search(r"\$.*\$", original_question))
 
+    # ── Layer 2: RAG — câu có passage dài ────────────────────────────────────
     if has_long_passage:
         return {"domain": "rag", "confidence": 0.85}
 
     is_theory = _is_theory_question(question)
     is_policy = any(h in question for h in POLICY_HINTS)
-    is_politics = any(h in question for h in POLITICS_HINTS)
+
+    # ── Phát hiện chính trị/polysci: regex Unicode folding trước, fallback keyword list
+    is_politics = is_polysci_question(original_question, choices_list)
+    if not is_politics:
+        is_politics = any(h in question for h in POLITICS_HINTS)
 
     sc_hits = sum(1 for h in SHOULD_CORRECT_HINTS if h in question)
     wants_calc = _has_calculation_intent(question)
     is_quant_reasoning = any(w in question for w in QUANT_KEYWORDS) and any(w in question for w in QUANT_REASONING)
+    formula_choices = _mostly_formula_choices(choices_list)
+    symbolic_science = has_formula and (
+        formula_choices or any(h in question for h in SCIENCE_SYMBOLIC_HINTS)
+    )
 
-    # Politics/HCM questions should be routed to should_correct unless they contain math formulas/expressions
+    # Politics/HCM questions → should_correct trừ khi có tính toán
     if is_politics and not has_formula and not has_math_expr:
         return {"domain": "should_correct", "confidence": 0.88}
 
-    if sc_hits > 0 and not has_math_expr and not has_formula and not wants_calc and not is_quant_reasoning:
+    if sc_hits > 0 and not has_math_expr and not symbolic_science and not wants_calc and not is_quant_reasoning:
         return {"domain": "should_correct", "confidence": 0.88 if is_theory else 0.85}
 
     has_numbers = _has_numeric_data(question)
-    has_units = _has_science_units(processed["question"])
+    has_units = _has_science_units(original_question)
     strong_hits = sum(1 for h in MATH_STRONG_HINTS if h in question)
     weak_hits = sum(1 for h in MATH_WEAK_HINTS if h in question)
 
@@ -365,6 +531,8 @@ def route_question(processed: Dict) -> Dict:
 
     # LaTeX-only (has_formula) doesn't auto-route to science if it lacks calculation intent or strong math hints
     if has_formula:
+        if symbolic_science and not is_policy and not is_politics:
+            return {"domain": "science", "confidence": 0.88}
         if wants_calc or is_quant_reasoning or strong_hits >= 1:
             return {"domain": "science", "confidence": 0.90}
 

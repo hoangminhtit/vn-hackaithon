@@ -26,7 +26,7 @@ Bộ câu hỏi không đồng nhất — gồm nhiều **dạng bài khác nhau
 
 1. **Phân loại trước, giải sau** — route câu hỏi vào đúng domain rồi mới áp dụng prompt/chiến lược phù hợp.
 2. **Heuristic + LLM song song** — heuristic nhanh, ổn định; LLM mạnh hơn cho phần lớn câu hỏi; luôn có fallback.
-3. **Chạy local** — dùng LLM cục bộ (`Qwen/Qwen3.5-4B`) qua `transformers`, không phụ thuộc API bên ngoài.
+3. **Chạy local** — dùng LLM cục bộ (`Qwen3.5-4B` GGUF) qua `llama.cpp`, không phụ thuộc API bên ngoài.
 4. **Tối ưu latency** — routing bằng heuristic (không gọi LLM route); `ignore_answer` bỏ qua LLM hoàn toàn.
 
 ---
@@ -85,7 +85,7 @@ vn-hackaithon/
 └── utils/
     ├── preprocess.py      # Tách passage, chuẩn hóa choices
     ├── bm25.py            # BM25-like retrieval (pure Python)
-    ├── llm.py             # Local LLM client (transformers)
+    ├── llm.py             # Local LLM client (llama.cpp / GGUF)
     └── postprocess.py     # Parse JSON answer / route output
 ```
 
@@ -229,7 +229,8 @@ Domain này được xử lý **100% heuristic** vì:
 
 | Biến môi trường | Giá trị mặc định | Ý nghĩa |
 |-----------------|-----------------|---------|
-| `HF_MODEL_ID` | `Qwen/Qwen3.5-4B` | Model HuggingFace |
+| `HF_MODEL_ID` | `unsloth/Qwen3.5-4B-GGUF` | Repo GGUF trên HuggingFace |
+| `GGUF_FILE` | `Qwen3.5-4B-Q4_K_M.gguf` | File GGUF cụ thể |
 | `HF_LOCAL_DIR` | `model/` | Cache local |
 | `LLM_MAX_NEW_TOKENS` | 32 | Trần token sinh |
 | `LLM_ANSWER_MAX_TOKENS` | 32 | Token cho bước answer |
@@ -237,11 +238,11 @@ Domain này được xử lý **100% heuristic** vì:
 
 ### 6.2. Client (`utils/llm.py`)
 
-- Load model qua `transformers` (`AutoModelForCausalLM`)
-- Hỗ trợ CUDA / MPS (Apple Silicon) / CPU
-- Chat template với `enable_thinking=False` (tắt chain-of-thought, giảm latency)
+- Load model GGUF qua `llama-cpp-python` (`llama_cpp.Llama`)
+- Tự tải file `.gguf` từ HuggingFace Hub nếu chưa có trong cache
+- Hỗ trợ Metal (Apple Silicon) / CUDA / CPU qua `LLAMA_N_GPU_LAYERS`
+- Chat completion API với `temperature=0` (greedy, deterministic)
 - Thread-safe (`threading.Lock`) cho generate
-- Greedy decoding (`do_sample=False`)
 
 ### 6.3. Prompt engineering
 

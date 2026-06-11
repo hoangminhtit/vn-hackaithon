@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from domains import ignore_answer, math, multi_domain, rag, should_correct
 from prompts import (
@@ -15,6 +15,12 @@ from utils.config import rag_full_passage_chars
 from utils.llm import LLMClient
 from utils.postprocess import parse_answer, parse_route_output
 from utils.preprocess import preprocess
+from utils.reasoning import (
+    answer_with_cot,
+    should_use_cot,
+    should_use_pot_for_science,
+    solve_science_with_pot,
+)
 
 
 DOMAIN_RUNNERS = {
@@ -26,7 +32,7 @@ DOMAIN_RUNNERS = {
 }
 
 
-def _llm_route_or_fallback(processed: Dict, llm_client: LLMClient | None) -> tuple[str, str, bool]:
+def _llm_route_or_fallback(processed: Dict, llm_client: Optional[LLMClient]) -> Tuple[str, str, bool]:
     if llm_client is None:
         route_result = route_question(processed)
         return apply_route_fallback(route_result, processed["passage"]), "", True
@@ -57,8 +63,8 @@ def _llm_route_or_fallback(processed: Dict, llm_client: LLMClient | None) -> tup
 
 
 def _llm_answer_or_fallback(
-    processed: Dict, domain: str, llm_client: LLMClient | None
-) -> tuple[str, str, bool]:
+    processed: Dict, domain: str, llm_client: Optional[LLMClient]
+) -> Tuple[str, str, bool]:
     if llm_client is None:
         return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed), "", True
 
@@ -69,6 +75,19 @@ def _llm_answer_or_fallback(
     specialized = math.solve_specialized(processed["question"], processed["choices"])
     if specialized:
         return specialized, "[HEURISTIC_SPECIALIZED]", False
+
+    if domain == "science" and should_use_pot_for_science(processed["question"], processed["choices"]):
+        try:
+            pot_answer, pot_trace = solve_science_with_pot(
+                llm_client,
+                processed["question"],
+                processed["choices"],
+            )
+            if pot_answer:
+                return pot_answer, pot_trace, False
+        except Exception as exc:
+            if os.getenv("DEBUG_LLM", "").strip() == "1":
+                print(f"[DEBUG_LLM] PoT fallback for {processed.get('qid', 'unknown')}: {exc}")
 
     try:
         try:
@@ -84,9 +103,23 @@ def _llm_answer_or_fallback(
                 domain_context = processed["passage"]
             else:
                 domain_context = bm25_retrieve(processed["passage"], processed["question"])
+        system_prompt = DOMAIN_SYSTEM_PROMPTS[domain]
+        user_prompt = domain_user_prompt(domain, domain_context, processed["question"], processed["choices"])
+
+        if should_use_cot(domain, processed["question"], processed["choices"]):
+            cot_answer, cot_trace = answer_with_cot(
+                llm_client,
+                system_prompt,
+                user_prompt,
+                processed["question"],
+                processed["choices"],
+            )
+            if cot_answer:
+                return cot_answer, cot_trace, False
+
         raw_answer = llm_client.chat(
-            DOMAIN_SYSTEM_PROMPTS[domain],
-            domain_user_prompt(domain, domain_context, processed["question"], processed["choices"]),
+            system_prompt,
+            user_prompt,
             max_tokens=answer_max_tokens,
             enable_thinking=False,
         )
@@ -102,7 +135,7 @@ def _llm_answer_or_fallback(
     return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed), raw_answer, True
 
 
-def process_question(item: Dict, llm_client: LLMClient | None = None) -> Dict:
+def process_question(item: Dict, llm_client: Optional[LLMClient] = None) -> Dict:
     processed = preprocess(item)
     domain, llm_raw_route, route_fallback = _llm_route_or_fallback(processed, llm_client)
     answer, llm_raw_answer, used_fallback = _llm_answer_or_fallback(processed, domain, llm_client)
@@ -133,7 +166,7 @@ def process_question(item: Dict, llm_client: LLMClient | None = None) -> Dict:
     return result
 
 
-def run_pipeline(items: List[Dict], max_workers: int = 8, llm_client: LLMClient | None = None) -> List[Dict]:
+def run_pipeline(items: List[Dict], max_workers: int = 8, llm_client: Optional[LLMClient] = None) -> List[Dict]:
     worker_count = max(1, min(max_workers, 8))
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         return list(executor.map(lambda x: process_question(x, llm_client), items))

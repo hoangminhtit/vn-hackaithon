@@ -1,6 +1,6 @@
 # VN Hackathon MCQ Solver
 
-Pipeline trắc nghiệm tiếng Việt: **route theo domain** → LLM local (Qwen) + **fallback heuristic** khi parse/lỗi.
+Pipeline trắc nghiệm tiếng Việt: **route theo domain** → LLM local (Qwen GGUF via llama.cpp) + **fallback heuristic** khi parse/lỗi.
 
 | Domain | Xử lý chính |
 |--------|-------------|
@@ -25,11 +25,40 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Nếu lỗi architecture Qwen3.5:
+`requirements.txt` không cài `llama-cpp-python` trực tiếp vì Linux/Kaggle dễ kéo nhầm CPU-only wheel. Trên Kaggle, ưu tiên cài CUDA prebuilt wheel thay vì build source:
+
+```python
+import torch
+
+cuda = torch.version.cuda or ""
+wheel_tags = {
+    "11.8": "cu118",
+    "12.1": "cu121",
+    "12.2": "cu122",
+    "12.3": "cu123",
+    "12.4": "cu124",
+    "12.5": "cu125",
+    "13.0": "cu130",
+    "13.2": "cu132",
+}
+major_minor = ".".join(cuda.split(".")[:2])
+tag = wheel_tags.get(major_minor)
+if tag is None and major_minor.startswith("12."):
+    tag = "cu125"
+if tag is None:
+    tag = "cu125"
+print("CUDA:", cuda, "llama-cpp wheel:", tag)
+```
 
 ```bash
-pip install --upgrade "git+https://github.com/huggingface/transformers.git"
+pip uninstall -y llama-cpp-python
+pip install --no-cache-dir --force-reinstall "llama-cpp-python>=0.3.0" \
+  --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/cu125"
 ```
+
+Nếu cell Python ở trên in ra tag khác `cu125`, thay phần cuối URL bằng tag đó, ví dụ `cu124`. Với Kaggle CUDA `12.8`, dùng `cu125`. Sau khi chạy lệnh trên trong Kaggle notebook, restart kernel/runtime rồi chạy lại project. Khi load model, log phải có `llama-cpp-python CUDA backend xác nhận` hoặc dòng llama.cpp kiểu `offloaded ... layers to GPU`.
+
+> **Lưu ý macOS:** Trên Apple Silicon, `llama-cpp-python` tự dùng Metal (GPU) khi cài từ pip. Trên Linux CUDA phải build với `-DGGML_CUDA=on` như trên.
 
 ### 2. Dữ liệu
 
@@ -47,6 +76,8 @@ chmod +x run.sh   # một lần
 ```
 
 Kết quả: `output/pred.csv` (cột `qid`, `answer`).
+
+Lần chạy đầu tiên sẽ **tự tải file GGUF** (~2.7 GB cho Q4_K_M) từ HuggingFace vào `model/`.
 
 Gọi trực tiếp:
 
@@ -73,22 +104,30 @@ Tuỳ chọn:
 ## Cấu hình `.env`
 
 ```env
-HF_MODEL_ID=Qwen/Qwen3.5-4B
+HF_MODEL_ID=unsloth/Qwen3.5-4B-GGUF
+GGUF_FILE=Qwen3.5-4B-Q4_K_M.gguf
 HF_LOCAL_DIR=model
-LLM_MAX_NEW_TOKENS=32
-LLM_ANSWER_MAX_TOKENS=32
+LLM_MAX_NEW_TOKENS=16
+LLM_ANSWER_MAX_TOKENS=16
 LLM_USE_LLM_ROUTE=0
 ```
 
 | Biến | Ý nghĩa |
 |------|---------|
-| `HF_MODEL_ID` | Model HuggingFace |
+| `HF_MODEL_ID` | Repo GGUF trên HuggingFace |
+| `GGUF_FILE` | Tên file `.gguf` cụ thể trong repo |
 | `HF_LOCAL_DIR` | Cache local (mặc định `model/`) |
 | `LLM_MAX_NEW_TOKENS` | Trần token sinh |
 | `LLM_ANSWER_MAX_TOKENS` | Token bước trả lời |
 | `LLM_USE_LLM_ROUTE` | `0` = route heuristic (nhanh), `1` = LLM route |
+| `LLM_USE_POT_SCIENCE` | `1` = dùng Program-of-Thought/Python cho câu science phù hợp |
+| `LLM_USE_COT_SHOULD_CORRECT` | `1` = dùng CoT 2 bước cho should_correct |
+| `LLM_USE_COT_MULTI` | `1` = dùng CoT có điều kiện cho multi_domain khó |
+| `LLM_POT_MAX_TOKENS`, `LLM_COT_MAX_TOKENS` | Token cho nhánh reasoning, không bị giới hạn bởi `LLM_MAX_NEW_TOKENS` |
+| `LLAMA_N_GPU_LAYERS` | `-1` = all GPU, `0` = CPU only |
+| `LLAMA_N_CTX` | Context window (mặc định `4096`) |
 
-LLM dùng **greedy** (`do_sample=False`), không cấu hình `temperature` / `top_p`.
+LLM dùng **greedy** (`temperature=0`), deterministic.
 
 Debug (tùy chọn): `TRACE_LLM=1`, `DEBUG_LLM=1`, `TRACE_QID=test_0001`
 
@@ -99,7 +138,7 @@ Debug (tùy chọn): `TRACE_LLM=1`, `DEBUG_LLM=1`, `TRACE_QID=test_0001`
 | Mode | Mô tả |
 |------|--------|
 | `heuristic` | Không load model |
-| `llm` | Bắt buộc `HF_MODEL_ID` |
+| `llm` | Bắt buộc `HF_MODEL_ID` + `GGUF_FILE` |
 | `auto` | Có model trong env → LLM, không → heuristic |
 
 ## Định dạng I/O
@@ -145,14 +184,14 @@ test_0001,A
 ### Chuẩn bị trước `docker build`
 
 1. Có `.env` ở root (copy từ `.env.example`) — được copy vào image lúc build.
-2. Thư mục `model/` **đã có weights** (chạy `./run.sh` một lần nếu còn trống):
+2. Thư mục `model/` **đã có file `.gguf`** (chạy `./run.sh` một lần nếu còn trống):
 
 ```bash
 ./run.sh
-ls model/   # không được rỗng
+ls model/*.gguf   # phải có file GGUF
 ```
 
-Image bake sẵn model tại `/app/model` — BTC **không** cần mount `model/` hay tải HuggingFace (nếu build đủ weights).
+Image bake sẵn GGUF model tại `/app/model` — BTC **không** cần mount `model/` hay tải HuggingFace.
 
 ### Build, push, chạy thử
 
@@ -193,9 +232,9 @@ Heuristic không LLM khi chấm (nếu cần): `docker run -e PIPELINE_MODE=heur
 ├── Dockerfile
 ├── pipeline.py / router.py / prompts.py
 ├── domains/                 # rag, math, multi_domain, …
-├── utils/                   # preprocess, bm25, llm, input_loader
+├── utils/                   # preprocess, bm25, llm (llama.cpp), input_loader
 ├── data/                    # JSON test (local, gitignore)
-├── model/                   # HF cache (gitignore, bake vào image)
+├── model/                   # GGUF cache (gitignore, bake vào image)
 ├── output/                  # pred.csv
 └── PHUONG_PHAP.md
 ```
@@ -208,8 +247,8 @@ Heuristic không LLM khi chấm (nếu cần): `docker run -e PIPELINE_MODE=heur
 |-----|------------|
 | `No input in /data` | Đang `COMPETITION=1` thiếu CSV — local dùng `./run.sh` hoặc `--input` JSON |
 | `LLM mode requires local model id` | Thêm `HF_MODEL_ID` vào `.env` hoặc `./run.sh heuristic` |
-| `model/ trống` khi `docker build` | Chạy `./run.sh` trước để tải weights |
-| `qwen3_5 ... does not recognize` | Upgrade `transformers` (lệnh ở mục cài đặt) |
+| `model/ không có file .gguf` khi `docker build` | Chạy `./run.sh` trước để tải GGUF |
+| `llama_cpp` build lỗi | Cài `cmake` và `build-essential` (Linux) hoặc Xcode CLI tools (macOS) |
 | JSON answer bị cắt | Tăng `LLM_ANSWER_MAX_TOKENS` (vd. 64) trong `.env` |
 
 ---
