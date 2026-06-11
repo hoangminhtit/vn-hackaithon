@@ -20,9 +20,9 @@ def _cuda_install_hint() -> str:
         return (
             "       Fix tren Kaggle notebook:\n"
             "         !pip uninstall -y llama-cpp-python\n"
-            "         !CMAKE_ARGS='-DGGML_CUDA=on' FORCE_CMAKE=1 "
-            "pip install --no-cache-dir --force-reinstall --no-binary llama-cpp-python "
-            "'llama-cpp-python>=0.3.0'\n"
+            "         # Chon cu124/cu125 theo torch.version.cuda; cu125 thuong chay duoc tren driver moi.\n"
+            "         !pip install --no-cache-dir --force-reinstall 'llama-cpp-python>=0.3.0' "
+            "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu125\n"
             "       Sau do restart kernel/runtime de Python load lai shared library CUDA."
         )
     return (

@@ -25,17 +25,38 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-`requirements.txt` không cài `llama-cpp-python` trực tiếp vì Linux/Kaggle dễ kéo nhầm CPU-only wheel. Cài backend theo máy đang chạy:
+`requirements.txt` không cài `llama-cpp-python` trực tiếp vì Linux/Kaggle dễ kéo nhầm CPU-only wheel. Trên Kaggle, ưu tiên cài CUDA prebuilt wheel thay vì build source:
 
-```bash
-# Kaggle / Linux CUDA
-pip uninstall -y llama-cpp-python
-CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 \
-  pip install --no-cache-dir --force-reinstall --no-binary llama-cpp-python \
-  "llama-cpp-python>=0.3.0"
+```python
+import torch
+
+cuda = torch.version.cuda or ""
+wheel_tags = {
+    "11.8": "cu118",
+    "12.1": "cu121",
+    "12.2": "cu122",
+    "12.3": "cu123",
+    "12.4": "cu124",
+    "12.5": "cu125",
+    "13.0": "cu130",
+    "13.2": "cu132",
+}
+major_minor = ".".join(cuda.split(".")[:2])
+tag = wheel_tags.get(major_minor)
+if tag is None and major_minor.startswith("12."):
+    tag = "cu125"
+if tag is None:
+    tag = "cu125"
+print("CUDA:", cuda, "llama-cpp wheel:", tag)
 ```
 
-Sau khi chạy lệnh trên trong Kaggle notebook, restart kernel/runtime rồi chạy lại project. Khi load model, log phải có `llama-cpp-python CUDA backend xác nhận` hoặc dòng llama.cpp kiểu `offloaded ... layers to GPU`.
+```bash
+pip uninstall -y llama-cpp-python
+pip install --no-cache-dir --force-reinstall "llama-cpp-python>=0.3.0" \
+  --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/cu125"
+```
+
+Nếu cell Python ở trên in ra tag khác `cu125`, thay phần cuối URL bằng tag đó, ví dụ `cu124`. Với Kaggle CUDA `12.8`, dùng `cu125`. Sau khi chạy lệnh trên trong Kaggle notebook, restart kernel/runtime rồi chạy lại project. Khi load model, log phải có `llama-cpp-python CUDA backend xác nhận` hoặc dòng llama.cpp kiểu `offloaded ... layers to GPU`.
 
 > **Lưu ý macOS:** Trên Apple Silicon, `llama-cpp-python` tự dùng Metal (GPU) khi cài từ pip. Trên Linux CUDA phải build với `-DGGML_CUDA=on` như trên.
 
