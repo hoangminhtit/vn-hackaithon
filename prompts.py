@@ -120,6 +120,21 @@ def _all_options_hint(choices: Dict[str, str]) -> Optional[str]:
             )
     return None
 
+
+def _many_choice_hint(choices: Dict[str, str]) -> Optional[str]:
+    """Warn the model when there are more than 4 options (A–J range).
+
+    Mirrors the bài tham chiếu logic in LLMAnswerer._many_choice_hint().
+    """
+    n = len(choices)
+    if n <= 4:
+        return None
+    last_letter = chr(ord("A") + n - 1)
+    return (
+        f"Lưu ý: có {n} lựa chọn từ A đến {last_letter}. "
+        "Hãy xem xét kỹ TẤT CẢ lựa chọn trước khi chọn — không dừng lại ở A/B/C/D."
+    )
+
 def load_few_shot_data():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(current_dir, "few-shot.json")
@@ -289,9 +304,10 @@ def domain_user_prompt(domain: str, passage: str, question: str, choices: Dict[s
     ctx = passage[:rag_max_context_chars()] if passage else ""
     hint = _domain_hint_block(domain, question)
     all_opt = _all_options_hint(choices)
+    many_ch = _many_choice_hint(choices)
     hint_block = ""
-    if hint or all_opt:
-        parts = [p for p in (hint, all_opt) if p]
+    parts = [p for p in (hint, all_opt, many_ch) if p]
+    if parts:
         hint_block = "[HƯỚNG DẪN]\n" + "\n".join(parts) + "\n\n"
 
     if domain == "rag":
