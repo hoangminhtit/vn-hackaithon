@@ -17,14 +17,14 @@ RUN pip install --no-cache-dir --upgrade pip
 
 # Cài các dependency KHÔNG phải llama-cpp trước
 COPY requirements.txt .
-RUN grep -v 'llama.cpp' requirements.txt | pip install --no-cache-dir -r /dev/stdin
+RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Build llama-cpp-python TỪ SOURCE với CUDA support ───────────────────────
 # CMAKE_ARGS kích hoạt CUDA backend, CUDA_DOCKER_ARCH=all để tương thích mọi GPU
 RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=all" \
     FORCE_CMAKE=1 \
     pip install --no-cache-dir --verbose \
-    llama-cpp-python>=0.3.0 --no-binary llama-cpp-python
+    "llama-cpp-python>=0.3.0" --no-binary llama-cpp-python
 
 # Code + .env (nếu có lúc build)
 COPY docker_entry.sh run.py download_model.py pipeline.py router.py prompts.py few-shot.json ./

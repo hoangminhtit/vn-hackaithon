@@ -1,4 +1,5 @@
 import os
+import platform
 import threading
 from typing import Optional
 
@@ -8,6 +9,29 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Default GGUF file name — override via GGUF_FILE env var.
 _DEFAULT_GGUF_FILE = "Qwen3.5-4B-Q4_K_M.gguf"
+
+
+def _running_on_kaggle() -> bool:
+    return bool(os.getenv("KAGGLE_KERNEL_RUN_TYPE") or os.getenv("KAGGLE_URL_BASE"))
+
+
+def _cuda_install_hint() -> str:
+    if _running_on_kaggle():
+        return (
+            "       Fix tren Kaggle notebook:\n"
+            "         !pip uninstall -y llama-cpp-python\n"
+            "         !CMAKE_ARGS='-DGGML_CUDA=on' FORCE_CMAKE=1 "
+            "pip install --no-cache-dir --force-reinstall --no-binary llama-cpp-python "
+            "'llama-cpp-python>=0.3.0'\n"
+            "       Sau do restart kernel/runtime de Python load lai shared library CUDA."
+        )
+    return (
+        "       Fix tren Linux CUDA:\n"
+        "         pip uninstall -y llama-cpp-python\n"
+        "         CMAKE_ARGS='-DGGML_CUDA=on' FORCE_CMAKE=1 "
+        "pip install --no-cache-dir --force-reinstall --no-binary llama-cpp-python "
+        "'llama-cpp-python>=0.3.0'"
+    )
 
 
 def _auto_detect_gpu_layers() -> int:
@@ -69,7 +93,6 @@ def _auto_detect_gpu_layers() -> int:
         pass
 
     # 4b. Fallback Metal check via platform + torch MPS
-    import platform
     if platform.system() == "Darwin":
         try:
             result = subprocess.run(
@@ -119,9 +142,7 @@ def _verify_cuda_backend(n_gpu_layers: int) -> None:
                 raise RuntimeError(
                     "[LLM] ❌ llama-cpp-python được cài CPU-ONLY!\n"
                     "       GPU offload sẽ bị ignore dù n_gpu_layers=-1.\n"
-                    "       Fix: rebuild với CUDA:\n"
-                    "         CMAKE_ARGS='-DGGML_CUDA=on' FORCE_CMAKE=1 "
-                    "pip install llama-cpp-python --no-binary llama-cpp-python"
+                    f"{_cuda_install_hint()}"
                 )
         else:
             # llama_supports_gpu_offload không có — thử kiểm tra GGML_USE_CUDA flag
