@@ -90,41 +90,100 @@ def _auto_detect_gpu_layers() -> int:
 def _verify_cuda_backend(n_gpu_layers: int) -> None:
     """Kiểm tra llama-cpp-python có CUDA backend không khi yêu cầu GPU offload.
 
-    Đây là root cause của lỗi: dù CUDA GPU có mặt và n_gpu_layers=-1,
-    nếu llama-cpp-python được cài bằng 'pip install llama-cpp-python' thông thường
-    thì nó là CPU-only prebuilt wheel và GPU offload sẽ bị ignore hoàn toàn.
+    Root cause: dù CUDA GPU có mặt và n_gpu_layers=-1,
+    nếu llama-cpp-python là CPU-only wheel thì GPU offload bị ignore hoàn toàn.
+
+    Trong llama-cpp-python >= 0.3.x, internal C lib nằm ở:
+        llama_cpp.llama_cpp._lib   (module llama_cpp.llama_cpp là ctypes binding)
     """
     if n_gpu_layers == 0:
         return  # CPU mode, không cần kiểm tra
 
     try:
-        import llama_cpp  # type: ignore
+        # llama-cpp-python 0.3.x: ctypes binding nằm ở sub-module llama_cpp.llama_cpp
+        import llama_cpp.llama_cpp as _lc  # type: ignore
 
-        # llama-cpp >= 0.2.x expose thông tin build qua llama_cpp.__version__ và internal flags
-        # Cách tin cậy nhất: gọi llama_supports_gpu_offload() qua binding
-        lib = getattr(llama_cpp, "_lib", None) or getattr(llama_cpp, "_LIB", None)
-        if lib is not None and hasattr(lib, "llama_supports_gpu_offload"):
-            supports = lib.llama_supports_gpu_offload()
-            if not supports:
+        lib = getattr(_lc, "_lib", None)
+        if lib is None:
+            print(
+                "[LLM] ⚠️  Không tìm thấy _lib trong llama_cpp.llama_cpp — "
+                "không thể xác nhận CUDA backend trước khi load model."
+            )
+            return
+
+        if hasattr(lib, "llama_supports_gpu_offload"):
+            supports = bool(lib.llama_supports_gpu_offload())
+            if supports:
+                print("[LLM] ✅ llama-cpp-python CUDA backend xác nhận (llama_supports_gpu_offload=True)")
+            else:
                 raise RuntimeError(
-                    "[LLM] ❌ llama-cpp-python ĐƯỢC CÀI NHƯ CPU-ONLY! \n"
+                    "[LLM] ❌ llama-cpp-python được cài CPU-ONLY!\n"
                     "       GPU offload sẽ bị ignore dù n_gpu_layers=-1.\n"
-                    "       Fix: rebuild llama-cpp-python với CUDA:\n"
+                    "       Fix: rebuild với CUDA:\n"
                     "         CMAKE_ARGS='-DGGML_CUDA=on' FORCE_CMAKE=1 "
                     "pip install llama-cpp-python --no-binary llama-cpp-python"
                 )
+        else:
+            # llama_supports_gpu_offload không có — thử kiểm tra GGML_USE_CUDA flag
+            ggml_cuda = getattr(lib, "GGML_USE_CUDA", None) or getattr(_lc, "GGML_USE_CUDA", None)
+            if ggml_cuda is not None:
+                print(f"[LLM] ✅ GGML_USE_CUDA={ggml_cuda} — CUDA backend có mặt")
             else:
-                print("[LLM] ✅ llama-cpp-python CUDA backend xác nhận (llama_supports_gpu_offload=True)")
-            return
-
-        # Fallback: thử load model với 1 layer và kiểm tra offload metadata
-        # (phương pháp này tốn thời gian hơn, chỉ dùng khi không có API ở trên)
-        print(
-            "[LLM] ⚠️  Không thể xác nhận CUDA backend qua API. "
-            "Nếu model chạy chậm bất thường, kiểm tra llama-cpp-python build flags."
-        )
+                print(
+                    "[LLM] ⚠️  Không thể xác nhận CUDA backend (API không tìm thấy). "
+                    "Sẽ verify lại sau khi model load xong."
+                )
     except ImportError:
-        pass  # llama_cpp chưa load tới đây, bỏ qua
+        print("[LLM] ⚠️  Không import được llama_cpp.llama_cpp — bỏ qua pre-load check.")
+
+
+def _verify_gpu_offload_post_load(model: "Llama", n_gpu_layers_requested: int) -> None:  # type: ignore[name-defined]
+    """Verify sau khi Llama() init xong: đọc metadata thực tế để xác nhận GPU layers.
+
+    Đây là cách chắc chắn nhất — llama.cpp log 'offloaded X/Y layers to GPU'
+    khi verbose=True, nhưng ta cũng có thể đọc qua C binding trực tiếp.
+    """
+    if n_gpu_layers_requested == 0:
+        return
+
+    try:
+        # llama-cpp-python 0.3.x: model._model là LlamaModel, model._ctx là LlamaContext
+        # n_gpu_layers thực tế có thể đọc qua model.model_params
+        params = getattr(model, "model_params", None)
+        if params is not None:
+            actual_layers = getattr(params, "n_gpu_layers", None)
+            if actual_layers is not None:
+                if actual_layers != 0:
+                    print(f"[LLM] ✅ GPU offload confirmed: model_params.n_gpu_layers={actual_layers}")
+                else:
+                    print(
+                        "[LLM] ❌ model_params.n_gpu_layers=0 — GPU offload KHÔNG hoạt động!\n"
+                        "       llama-cpp-python có thể vẫn là CPU-only build."
+                    )
+                return
+
+        # Fallback: thử đọc số layers qua C API nếu có
+        import llama_cpp.llama_cpp as _lc  # type: ignore
+        lib = getattr(_lc, "_lib", None)
+        if lib and hasattr(lib, "llama_model_n_gpu_layers"):
+            underlying = getattr(model, "_model", None)
+            if underlying is not None:
+                ptr = getattr(underlying, "model", None)
+                if ptr is not None:
+                    n_actual = lib.llama_model_n_gpu_layers(ptr)
+                    if n_actual > 0:
+                        print(f"[LLM] ✅ GPU offload confirmed: {n_actual} layers trên GPU")
+                    else:
+                        print("[LLM] ❌ llama_model_n_gpu_layers=0 — model đang chạy CPU!")
+                    return
+
+        # Nếu không có API nào — in hướng dẫn debug thủ công
+        print(
+            "[LLM] ℹ️  Không thể đọc GPU layer count qua API.\n"
+            "       Để verify thủ công: set DEBUG_LLM=1 và tìm dòng 'offloaded X/Y layers to GPU' trong log."
+        )
+    except Exception as e:
+        print(f"[LLM] ⚠️  Post-load GPU verify gặp lỗi (không nghiêm trọng): {e}")
 
 
 
@@ -166,12 +225,24 @@ class LLMClient:
         # Lazy import so that llama_cpp is only needed when actually using LLM.
         from llama_cpp import Llama  # type: ignore
 
+        # verbose=True bắt buộc khi GPU offload để thấy 'offloaded X/Y layers' trong log
+        # Nếu DEBUG_LLM=1 hoặc GPU requested → bật verbose để capture GPU offload info
+        debug_verbose = os.getenv("DEBUG_LLM", "").strip() == "1"
+        load_verbose = debug_verbose or (n_gpu_layers != 0)
+
         self.model = Llama(
             model_path=model_path,
             n_ctx=n_ctx,
             n_gpu_layers=n_gpu_layers,
-            verbose=os.getenv("DEBUG_LLM", "").strip() == "1",
+            verbose=load_verbose,
         )
+
+        # Verify thực tế GPU layers sau khi load
+        _verify_gpu_offload_post_load(self.model, n_gpu_layers)
+
+        if not debug_verbose and load_verbose:
+            # Đã bật verbose chỉ để verify GPU — log thêm hint
+            print("[LLM] ℹ️  Set DEBUG_LLM=1 để xem full llama.cpp log khi cần debug.")
 
     def _resolve_gguf_path(self) -> str:
         """Return absolute path to the GGUF model file, downloading from HF if needed."""
