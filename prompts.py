@@ -202,7 +202,7 @@ QUY TẮC BẮT BUỘC:
 """
 
 
-def router_user_prompt(passage: str, question: str, num_choices: int, choices: Dict[str, str] | None = None) -> str:
+def router_user_prompt(passage: str, question: str, num_choices: int, choices: Optional[Dict[str, str]] = None) -> str:
     choices_str = ""
     if choices:
         choices_str = "\n".join(f"{label}. {text}" for label, text in choices.items())

@@ -1,7 +1,8 @@
 import os
+from typing import Optional
 
 
-def env_int(name: str, default: int, minimum: int = 1, maximum: int | None = None) -> int:
+def env_int(name: str, default: int, minimum: int = 1, maximum: Optional[int] = None) -> int:
     try:
         value = int(os.getenv(name, str(default)))
     except ValueError:

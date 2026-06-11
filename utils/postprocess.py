@@ -1,13 +1,13 @@
 import json
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 def valid_labels(num_choices: int) -> List[str]:
     return [chr(ord("A") + i) for i in range(max(num_choices, 0))]
 
 
-def extract_last_json_object_with_key(raw_output: str, required_key: str) -> Dict | None:
+def extract_last_json_object_with_key(raw_output: str, required_key: str) -> Optional[Dict]:
     clean = re.sub(r"```json|```", "", raw_output).strip()
     decoder = json.JSONDecoder()
     candidates: List[Dict] = []

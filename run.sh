@@ -22,8 +22,13 @@ Ví dụ:
   ./run.sh heuristic
   ./run.sh llm data/public-test_1780368312.json output/pred.csv
 
+Tải model GGUF (lần đầu):
+  python download_model.py
+  python download_model.py --token hf_xxxxx
+
 Biến môi trường (tùy chọn):
   INPUT, OUTPUT  — ghi đè đường dẫn mặc định
+  HF_TOKEN       — HuggingFace access token
 
 Cấu hình: file .env ở thư mục gốc (run.py tự load).
 EOF

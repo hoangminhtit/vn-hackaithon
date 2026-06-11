@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from domains import ignore_answer, math, multi_domain, rag, should_correct
 from prompts import (
@@ -26,7 +26,7 @@ DOMAIN_RUNNERS = {
 }
 
 
-def _llm_route_or_fallback(processed: Dict, llm_client: LLMClient | None) -> tuple[str, str, bool]:
+def _llm_route_or_fallback(processed: Dict, llm_client: Optional[LLMClient]) -> Tuple[str, str, bool]:
     if llm_client is None:
         route_result = route_question(processed)
         return apply_route_fallback(route_result, processed["passage"]), "", True
@@ -57,8 +57,8 @@ def _llm_route_or_fallback(processed: Dict, llm_client: LLMClient | None) -> tup
 
 
 def _llm_answer_or_fallback(
-    processed: Dict, domain: str, llm_client: LLMClient | None
-) -> tuple[str, str, bool]:
+    processed: Dict, domain: str, llm_client: Optional[LLMClient]
+) -> Tuple[str, str, bool]:
     if llm_client is None:
         return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed), "", True
 
@@ -102,7 +102,7 @@ def _llm_answer_or_fallback(
     return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed), raw_answer, True
 
 
-def process_question(item: Dict, llm_client: LLMClient | None = None) -> Dict:
+def process_question(item: Dict, llm_client: Optional[LLMClient] = None) -> Dict:
     processed = preprocess(item)
     domain, llm_raw_route, route_fallback = _llm_route_or_fallback(processed, llm_client)
     answer, llm_raw_answer, used_fallback = _llm_answer_or_fallback(processed, domain, llm_client)
@@ -133,7 +133,7 @@ def process_question(item: Dict, llm_client: LLMClient | None = None) -> Dict:
     return result
 
 
-def run_pipeline(items: List[Dict], max_workers: int = 8, llm_client: LLMClient | None = None) -> List[Dict]:
+def run_pipeline(items: List[Dict], max_workers: int = 8, llm_client: Optional[LLMClient] = None) -> List[Dict]:
     worker_count = max(1, min(max_workers, 8))
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         return list(executor.map(lambda x: process_question(x, llm_client), items))

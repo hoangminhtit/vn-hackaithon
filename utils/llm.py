@@ -1,20 +1,79 @@
 import os
 import threading
-import warnings
 from typing import Optional
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from huggingface_hub import hf_hub_download
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Default GGUF file name — override via GGUF_FILE env var.
+_DEFAULT_GGUF_FILE = "Qwen3.5-4B-Q4_K_M.gguf"
+
+
+def _auto_detect_gpu_layers() -> int:
+    """Auto-detect the best n_gpu_layers for the current hardware.
+
+    Priority:
+      1. LLAMA_N_GPU_LAYERS env var  — manual override (skip auto-detect)
+      2. CUDA GPU available          → -1 (offload all layers to GPU)
+      3. Apple Metal (MPS) available → -1 (offload all layers to GPU)
+      4. CPU only                    →  0 (no GPU offload)
+    """
+    # 1. Manual override via env var
+    env_val = os.getenv("LLAMA_N_GPU_LAYERS", "").strip()
+    if env_val:
+        try:
+            return int(env_val)
+        except ValueError:
+            pass
+
+    # 2. Try CUDA
+    try:
+        import torch  # type: ignore
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            print(f"[LLM] CUDA GPU detected: {gpu_name} → n_gpu_layers=-1")
+            return -1
+    except ImportError:
+        pass
+
+    # 3. Try Apple Metal (MPS) — check via llama_cpp directly
+    try:
+        import llama_cpp  # type: ignore
+        # llama_cpp built with Metal support exposes GGML_USE_METAL
+        if getattr(llama_cpp, "GGML_USE_METAL", False) or getattr(llama_cpp, "_LIB", None) and hasattr(llama_cpp._LIB, "llama_supports_gpu_offload"):
+            print("[LLM] Apple Metal detected → n_gpu_layers=-1")
+            return -1
+    except Exception:
+        pass
+
+    # 3b. Fallback Metal check via platform
+    import platform
+    import subprocess
+    if platform.system() == "Darwin":
+        try:
+            result = subprocess.run(
+                ["python3", "-c", "import torch; print(torch.backends.mps.is_available())"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.stdout.strip() == "True":
+                print("[LLM] Apple Metal (MPS) detected → n_gpu_layers=-1")
+                return -1
+        except Exception:
+            pass
+
+    # 4. CPU fallback
+    print("[LLM] No GPU detected → n_gpu_layers=0 (CPU only)")
+    return 0
+
 
 class LLMClient:
-    def __init__(self, model_id: str, max_new_tokens: int = 256):
+    def __init__(self, model_id: str, max_new_tokens: int = 256, gguf_file: Optional[str] = None):
         self.model_id = model_id
         self.max_new_tokens = max_new_tokens
         self._lock = threading.Lock()
-        # Default cache directory inside project so model files are local and explicit.
+
+        # Resolve local cache directory.
         cache_dir_env = os.getenv("HF_LOCAL_DIR", "").strip()
         self.cache_dir = (
             os.path.abspath(cache_dir_env)
@@ -22,58 +81,53 @@ class LLMClient:
             else os.path.join(PROJECT_ROOT, "model")
         )
         os.makedirs(self.cache_dir, exist_ok=True)
-        # Keep remote code loading explicit and constrained by default.
-        allow_remote_code = self.model_id.startswith("Qwen/")
-        
-        # Select device and precision based on hardware availability
-        if torch.cuda.is_available():
-            device_target = None
-            device_map = "auto"
-            dtype = torch.float16
-        elif torch.backends.mps.is_available():
-            device_target = "mps"
-            device_map = None
-            dtype = torch.float16
-        else:
-            device_target = "cpu"
-            device_map = None
-            dtype = torch.float32
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=self.cache_dir,
-            trust_remote_code=allow_remote_code,
+        # Determine the GGUF filename to use.
+        self.gguf_file = gguf_file or os.getenv("GGUF_FILE", "").strip() or _DEFAULT_GGUF_FILE
+
+        # Resolve path to the .gguf file — download if needed.
+        model_path = self._resolve_gguf_path()
+
+        # Determine context size from env (default 4096 — enough for MCQ).
+        try:
+            n_ctx = int(os.getenv("LLAMA_N_CTX", "4096"))
+        except ValueError:
+            n_ctx = 4096
+
+        # Auto-detect GPU and set n_gpu_layers accordingly.
+        # LLAMA_N_GPU_LAYERS env var still works as a manual override.
+        n_gpu_layers = _auto_detect_gpu_layers()
+
+        # Lazy import so that llama_cpp is only needed when actually using LLM.
+        from llama_cpp import Llama  # type: ignore
+
+        self.model = Llama(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            verbose=os.getenv("DEBUG_LLM", "").strip() == "1",
         )
 
-        load_kwargs = dict(
-            cache_dir=self.cache_dir,
-            torch_dtype=dtype,
-            trust_remote_code=allow_remote_code,
-            low_cpu_mem_usage=True,
-        )
-        if device_map:
-            load_kwargs["device_map"] = device_map
-        self.model = AutoModelForCausalLM.from_pretrained(model_id, **load_kwargs)
-        if device_target is not None:
-            self.model = self.model.to(device_target)
+    def _resolve_gguf_path(self) -> str:
+        """Return absolute path to the GGUF model file, downloading from HF if needed."""
+        # 1. Check if the file already exists in the cache directory.
+        local_path = os.path.join(self.cache_dir, self.gguf_file)
+        if os.path.isfile(local_path):
+            return local_path
 
-    def _inference_device(self) -> torch.device:
-        model_device = getattr(self.model, "device", None)
-        if isinstance(model_device, torch.device) and model_device.type != "meta":
-            return model_device
-        for param in self.model.parameters():
-            if param.device.type != "meta":
-                return param.device
-        return torch.device("cpu")
+        # 2. Try downloading from HuggingFace Hub.
+        token = os.getenv("HF_TOKEN", "").strip() or None
+        print(f"[LLM] Downloading {self.model_id}/{self.gguf_file} → {self.cache_dir} ...")
+        downloaded = hf_hub_download(
+            repo_id=self.model_id,
+            filename=self.gguf_file,
+            local_dir=self.cache_dir,
+            token=token,
+        )
+        return downloaded
 
     @classmethod
     def from_env(cls) -> Optional["LLMClient"]:
-        if os.getenv("HF_TOKEN", "").strip():
-            warnings.warn(
-                "HF_TOKEN is ignored in local-transformers mode. "
-                "Use HF_MODEL_ID/LLM_MODEL and local cache only.",
-                stacklevel=2,
-            )
         model = os.getenv("LLM_MODEL", "").strip() or os.getenv("HF_MODEL_ID", "").strip()
         if not model:
             return None
@@ -84,67 +138,25 @@ class LLMClient:
         return cls(model_id=model, max_new_tokens=max_new_tokens)
 
     def chat(self, system_prompt: str, user_prompt: str, max_tokens: int = 256, enable_thinking: bool = False) -> str:
+        """Send a chat-completion request and return the assistant's text reply."""
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        try:
-            encoded = self.tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                return_tensors="pt",
-                return_dict=True,
-                enable_thinking=enable_thinking,
-            )
-        except TypeError:
-            try:
-                encoded = self.tokenizer.apply_chat_template(
-                    messages,
-                    add_generation_prompt=True,
-                    return_tensors="pt",
-                    return_dict=True,
-                )
-            except Exception:
-                fallback_prompt = f"{system_prompt}\n\n{user_prompt}"
-                encoded = self.tokenizer(fallback_prompt, return_tensors="pt")
-        except Exception:
-            fallback_prompt = f"{system_prompt}\n\n{user_prompt}"
-            encoded = self.tokenizer(fallback_prompt, return_tensors="pt")
-        input_ids = encoded["input_ids"]
-        attention_mask = encoded.get("attention_mask")
-        if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids)
-        device = self._inference_device()
-        input_ids = input_ids.to(device)
-        attention_mask = attention_mask.to(device)
         max_output_tokens = min(max_tokens, self.max_new_tokens)
 
-        eos_id = self.tokenizer.eos_token_id
-        if eos_id is None:
-            eos_id = getattr(self.model.config, "eos_token_id", None)
-        if isinstance(eos_id, list):
-            eos_ids = eos_id
-        else:
-            eos_ids = [eos_id] if eos_id is not None else []
-
-        if not enable_thinking:
-            think_end_ids = self.tokenizer.encode("</think>", add_special_tokens=False)
-            if think_end_ids:
-                eos_ids.append(think_end_ids[-1])
-        eos_ids = list(set(i for i in eos_ids if i is not None))
-
-        pad_id = self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else (eos_ids[0] if eos_ids else 0)
         with self._lock:
-            output_ids = self.model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                max_new_tokens=max_output_tokens,
-                do_sample=False,
-                pad_token_id=pad_id,
-                eos_token_id=eos_ids if eos_ids else None,
+            response = self.model.create_chat_completion(
+                messages=messages,
+                max_tokens=max_output_tokens,
+                temperature=0.0,  # greedy — deterministic
             )
-        generated_ids = output_ids[0][input_ids.shape[1]:]
-        text = self.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
-        if "</think>" in text:
+
+        text: str = response["choices"][0]["message"]["content"] or ""
+        text = text.strip()
+
+        # Strip <think>…</think> blocks if thinking is disabled.
+        if not enable_thinking and "</think>" in text:
             text = text.split("</think>", 1)[1].strip()
+
         return text
