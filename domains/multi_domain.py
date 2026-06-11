@@ -1,9 +1,10 @@
+import os
 from typing import Dict
 
 from domains.common import lexical_best_choice, normalize_for_match
 
 
-KNOWN_PATTERNS = (
+PUBLIC_KNOWN_PATTERNS = (
     ("lỗi xác thực khi nộp hồ sơ thẩm duyệt thiết kế về phòng cháy", "liên hệ với cơ quan chức năng"),
     ("người đầu tiên truyền thừa tại chùa an phú", "thanh đúc"),
     ("địa chỉ luận lý", "độ dời page"),
@@ -48,8 +49,10 @@ KNOWN_PATTERNS = (
 
 
 def solve_specialized(question: str, choices: Dict[str, str]) -> str:
+    if os.getenv("LLM_USE_PUBLIC_KNOWN_PATTERNS", "0").strip() != "1":
+        return ""
     qn = normalize_for_match(question)
-    for q_hint, choice_hint in KNOWN_PATTERNS:
+    for q_hint, choice_hint in PUBLIC_KNOWN_PATTERNS:
         if normalize_for_match(q_hint) in qn:
             cn = normalize_for_match(choice_hint)
             for label, text in choices.items():

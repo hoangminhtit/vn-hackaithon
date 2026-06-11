@@ -1,10 +1,11 @@
+import os
 from typing import Dict
 
 from domains.common import lexical_best_choice, normalize_for_match
 from prompts import question_polarity
 
 
-KNOWN_PATTERNS = (
+PUBLIC_KNOWN_PATTERNS = (
     ("cách mạng giải phóng dân tộc trong thời đại mới", "đoàn kết với giai cấp vô sản"),
     ("nguồn gốc nào sau đây đã ảnh hưởng sâu sắc đến tư tưởng chủ tịch hồ chí minh", "gia đình yêu nước"),
     ("sức mạnh dân tộc bao gồm", "tinh thần đoàn kết"),
@@ -30,8 +31,10 @@ KNOWN_PATTERNS = (
 
 
 def solve_specialized(question: str, choices: Dict[str, str]) -> str:
+    if os.getenv("LLM_USE_PUBLIC_KNOWN_PATTERNS", "0").strip() != "1":
+        return ""
     qn = normalize_for_match(question)
-    for q_hint, choice_hint in KNOWN_PATTERNS:
+    for q_hint, choice_hint in PUBLIC_KNOWN_PATTERNS:
         if normalize_for_match(q_hint) in qn:
             cn = normalize_for_match(choice_hint)
             for label, text in choices.items():

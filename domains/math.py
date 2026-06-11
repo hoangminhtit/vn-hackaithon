@@ -1,3 +1,4 @@
+import os
 import re
 from typing import Dict, Optional
 
@@ -5,6 +6,10 @@ from domains.common import lexical_best_choice, normalize_for_match
 
 
 NUMBER_RE = re.compile(r"[-+]?\d+(?:[.,]\d+)*")
+
+
+def _public_patterns_enabled() -> bool:
+    return os.getenv("LLM_USE_PUBLIC_KNOWN_PATTERNS", "0").strip() == "1"
 
 
 def _parse_vn_number(raw: str) -> Optional[float]:
@@ -546,6 +551,8 @@ def _solve_laplace_polynomial(question: str, choices: Dict[str, str]) -> Optiona
 
 
 def _solve_alveolar_oxygen_pressure(question: str, choices: Dict[str, str]) -> Optional[str]:
+    if not _public_patterns_enabled():
+        return None
     qn = normalize_for_match(question)
     if "áp suất riêng phần" not in qn or "oxy" not in qn or "phế nang" not in qn:
         return None
@@ -641,6 +648,8 @@ def _solve_carbon_percent_from_co2(question: str, choices: Dict[str, str]) -> Op
 
 
 def _solve_three_phase_three_wire_wattmeter(question: str, choices: Dict[str, str]) -> Optional[str]:
+    if not _public_patterns_enabled():
+        return None
     qn = normalize_for_match(question)
     if "3 pha 3 dây" not in qn or "không đối xứng" not in qn or "công suất" not in qn:
         return None
@@ -661,6 +670,8 @@ def _solve_sulfur_oxide_percent(question: str, choices: Dict[str, str]) -> Optio
 
 
 def _solve_compound_amount_two_years(question: str, choices: Dict[str, str]) -> Optional[str]:
+    if not _public_patterns_enabled():
+        return None
     qn = normalize_for_match(question)
     if "khoản nợ" not in qn or "lãi suất" not in qn or "cuối 2 năm" not in qn:
         return None
@@ -668,6 +679,8 @@ def _solve_compound_amount_two_years(question: str, choices: Dict[str, str]) -> 
 
 
 def _solve_kennie_printer_book_value(question: str, choices: Dict[str, str]) -> Optional[str]:
+    if not _public_patterns_enabled():
+        return None
     qn = normalize_for_match(question)
     if "kennie" not in qn or "máy in" not in qn or "giá trị sổ sách" not in qn:
         return None
@@ -679,6 +692,8 @@ def _solve_kennie_printer_book_value(question: str, choices: Dict[str, str]) -> 
 
 
 def _solve_malformed_triangular_eigenvalues(question: str, choices: Dict[str, str]) -> Optional[str]:
+    if not _public_patterns_enabled():
+        return None
     qn = normalize_for_match(question)
     if "giá trị riêng" not in qn or "toán tử tuyến tính" not in qn or "1 0" not in qn or "2 1" not in qn or "0 2" not in qn:
         return None

@@ -124,6 +124,7 @@ LLM_USE_LLM_ROUTE=0
 | `LLM_USE_COT_SHOULD_CORRECT` | `1` = dùng CoT 2 bước cho should_correct |
 | `LLM_USE_COT_MULTI` | `1` = dùng CoT có điều kiện cho multi_domain khó |
 | `LLM_POT_MAX_TOKENS`, `LLM_COT_MAX_TOKENS` | Token cho nhánh reasoning, không bị giới hạn bởi `LLM_MAX_NEW_TOKENS` |
+| `LLM_USE_PUBLIC_KNOWN_PATTERNS` | `0` = tắt rule bám public test; chỉ bật `1` khi debug public |
 | `LLAMA_N_GPU_LAYERS` | `-1` = all GPU, `0` = CPU only |
 | `LLAMA_N_CTX` | Context window (mặc định `4096`) |
 

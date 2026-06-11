@@ -51,6 +51,7 @@ ENV LLM_POT_TIMEOUT=2.0
 ENV LLM_USE_COT_SHOULD_CORRECT=1
 ENV LLM_USE_COT_MULTI=1
 ENV LLM_COT_MAX_TOKENS=384
+ENV LLM_USE_PUBLIC_KNOWN_PATTERNS=0
 # LLAMA_N_GPU_LAYERS: để trống → Python tự auto-detect CUDA/CPU.
 # Override thủ công: docker run -e LLAMA_N_GPU_LAYERS=-1 ...  (GPU full)
 #                               -e LLAMA_N_GPU_LAYERS=0  ...  (CPU only)
