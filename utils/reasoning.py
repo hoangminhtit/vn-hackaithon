@@ -222,7 +222,7 @@ def should_verify_answer(domain: str, n_choices: int) -> bool:
     if domain in {"rag", "should_correct"}:
         return True
     if domain == "multi_domain":
-        return n_choices > 4 or _env_flag("LLM_VERIFY_MULTI", "1")
+        return _env_flag("LLM_VERIFY_MULTI", "0") or (n_choices > 4 and _env_flag("LLM_VERIFY_MULTI_MANY_CHOICES", "0"))
     return False
 
 
