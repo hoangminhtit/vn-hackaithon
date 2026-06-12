@@ -2,7 +2,7 @@ import os
 from typing import Dict
 
 from domains.common import lexical_best_choice, normalize_for_match
-from prompts import LEGAL_HINTS, POLYSCI_HINTS, question_polarity
+from prompts import question_polarity
 
 
 PUBLIC_KNOWN_PATTERNS = (
@@ -28,55 +28,6 @@ PUBLIC_KNOWN_PATTERNS = (
     ("hội nghị hợp nhất đảng tại cửu long", "chỉ có a và b"),
     ("tư tưởng chính trong học thuyết chính trị của khổng tử", "nhân, lễ, chính danh"),
 )
-
-
-def domain_hints(question: str, choices: Dict[str, str]) -> str:
-    """Tạo gợi ý chiến lược giải dành cho domain should_correct.
-
-    Chỉ sinh gợi ý về cách đọc câu hỏi và chiến lược loại trừ,
-    KHÔNG hardcode kiến thức cụ thể → an toàn cho Private Test.
-    """
-    q = question.lower()
-    polarity = question_polarity(question)
-    hints = []
-
-    # Gợi ý cực tính: câu hỏi tìm phát biểu SAI
-    if polarity == "false":
-        hints.append(
-            "⚠️ CÂU HỎI TÌM PHÁT BIỂU SAI/KHÔNG ĐÚNG: "
-            "hãy tìm lựa chọn MÂU THUẪN với kiến thức đúng — "
-            "không chọn lựa chọn nghe hợp lý nhất hay đúng về lý thuyết."
-        )
-        hints.append(
-            "Chiến lược: với mỗi lựa chọn, tự xác định nó là ĐÚNG hay SAI, "
-            "rồi chọn cái SAI vì câu hỏi yêu cầu tìm cái sai."
-        )
-
-    # Câu hỏi tìm phát biểu ĐÚNG
-    elif polarity == "true":
-        hints.append(
-            "⚠️ CÂU HỎI TÌM PHÁT BIỂU ĐÚNG: "
-            "chọn lựa chọn chính xác nhất về mặt kiến thức — "
-            "loại trừ các lựa chọn có sai lệch dù nhỏ về số liệu, tên, hay điều kiện."
-        )
-
-    # Câu pháp luật phủ định cần kiểm tra điều kiện/chủ thể
-    if polarity == "false" and any(h in q for h in LEGAL_HINTS):
-        hints.append(
-            "Với pháp luật: kiểm tra đủ điều kiện, chủ thể áp dụng, "
-            "phạm vi áp dụng và từ khóa phủ định trong từng lựa chọn."
-        )
-
-    # Câu lý luận chính trị/tư tưởng
-    if any(h in q for h in POLYSCI_HINTS):
-        hints.append(
-            "Với lý luận chính trị/tư tưởng: so khớp thuật ngữ chuẩn trong giáo trình; "
-            "cảnh giác đáp án gần đúng nhưng sai một cụm từ then chốt."
-        )
-
-    if not hints:
-        return ""
-    return "[GỢI Ý CHIẾN LƯỢC]\n" + "\n".join(f"- {hint}" for hint in hints)
 
 
 def solve_specialized(question: str, choices: Dict[str, str]) -> str:

@@ -288,11 +288,14 @@ def answer_rag_with_evidence(
     )
     evidence_prompt = (
         f"{user_prompt}\n\n"
-        "Hãy kiểm tra từng lựa chọn theo context. Với mỗi lựa chọn, ghi rất ngắn: "
-        "SUPPORTED nếu context hỗ trợ trực tiếp, CONTRADICTED nếu mâu thuẫn, "
-        "NOT_FOUND nếu không thấy evidence đủ rõ. "
-        "Đặc biệt chú ý ngày/tháng/số liệu, câu phủ định/KHÔNG/ngoại trừ, và các lựa chọn chỉ khác nhau một chi tiết nhỏ.\n"
-        f"Kết thúc bằng đúng dòng: Đáp án cuối: <một chữ cái trong {{{labels}}}>."
+        "Với mỗi lựa chọn, thực hiện theo đúng 2 bước:\n"
+        "  Bước 1 — Trích dẫn: ghi ngắn câu hoặc cụm từ trong context liên quan nhất đến lựa chọn đó "
+        "(nếu không tìm thấy câu nào liên quan, ghi 'Không tìm thấy').\n"
+        "  Bước 2 — Phán quyết: dựa vào câu vừa trích dẫn, ghi SUPPORTED nếu xác nhận lựa chọn, "
+        "CONTRADICTED nếu mâu thuẫn, NOT_FOUND nếu context không đủ rõ.\n"
+        "Chú ý đặc biệt: ngày/tháng/số liệu cụ thể, từ phủ định KHÔNG/ngoại trừ, "
+        "và các lựa chọn chỉ khác nhau một chi tiết nhỏ.\n"
+        f"Kết thúc bằng đúng một dòng: Đáp án cuối: <một chữ cái trong {{{labels}}}>."
     )
     reasoning = llm_client.chat(
         system_prompt,
