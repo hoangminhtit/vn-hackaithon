@@ -86,6 +86,11 @@ exec(compile(code, "<pot>", "exec"), namespace, namespace)
 
 
 def should_use_pot_for_science(question: str, choices: Dict[str, str]) -> bool:
+    """Xác định xem có nên sử dụng Program of Thought (PoT) để giải toán/khoa học hay không.
+
+    Phương pháp này giúp sinh code Python để giải quyết các câu hỏi định lượng phức tạp,
+    được gọi bởi pipeline._llm_answer_or_fallback.
+    """
     if not _env_flag("LLM_USE_POT_SCIENCE", "1"):
         return False
     text = question.lower() + "\n" + "\n".join(choices.values()).lower()
@@ -209,3 +214,57 @@ def answer_with_cot(
     if parsed and parsed != "NONE":
         return parsed, f"[COT]\n{reasoning}\n[EXTRACT]\n{raw}"
     return None, f"[COT]\n{reasoning}\n[EXTRACT]\n{raw}"
+
+
+def should_verify_answer(domain: str, n_choices: int) -> bool:
+    if not _env_flag("LLM_USE_ANSWER_VERIFIER", "1"):
+        return False
+    if domain in {"rag", "should_correct"}:
+        return True
+    if domain == "multi_domain":
+        return _env_flag("LLM_VERIFY_MULTI", "0") or (n_choices > 4 and _env_flag("LLM_VERIFY_MULTI_MANY_CHOICES", "0"))
+    return False
+
+
+def verify_answer(
+    llm_client: LLMClient,
+    domain: str,
+    system_prompt: str,
+    user_prompt: str,
+    initial_answer: str,
+    raw_answer: str,
+    question: str,
+    choices: Dict[str, str],
+) -> Tuple[Optional[str], str]:
+    labels = ", ".join(choices.keys())
+    max_tokens = int(os.getenv("LLM_VERIFY_MAX_TOKENS", "320"))
+    raw_excerpt = raw_answer[:1200]
+    verifier_system = (
+        "Bạn là bộ kiểm tra đáp án trắc nghiệm. Nhiệm vụ là phát hiện lỗi chọn đáp án, "
+        "đặc biệt lỗi đọc sai yêu cầu ĐÚNG/SAI/KHÔNG, bỏ sót context, hoặc chọn 'tất cả' quá vội. "
+        "Chỉ trả về JSON cuối cùng."
+    )
+    verifier_user = (
+        f"Domain: {domain}\n\n"
+        f"Prompt gốc:\n{user_prompt}\n\n"
+        f"Đáp án ban đầu: {initial_answer}\n"
+        f"Raw answer ban đầu:\n{raw_excerpt}\n\n"
+        "Hãy kiểm tra lại thật ngắn gọn theo các tiêu chí:\n"
+        "- Câu hỏi đang hỏi đáp án đúng, sai, ngoại trừ, hay thông tin theo context?\n"
+        "- Nếu là RAG, đáp án có được context hỗ trợ trực tiếp không?\n"
+        "- Nếu có 'tất cả/cả a,b,c', chỉ giữ nếu từng phương án đơn lẻ đều đúng.\n"
+        "- Nếu đáp án ban đầu sai, sửa sang đáp án đúng nhất.\n"
+        f"Cuối cùng chỉ in đúng một dòng JSON với chữ cái trong {{{labels}}}: "
+        '{"answer":"X"}'
+    )
+    raw = llm_client.chat(
+        verifier_system,
+        verifier_user,
+        max_tokens=max_tokens,
+        enable_thinking=False,
+        apply_global_cap=False,
+    )
+    parsed = parse_answer(raw, len(choices))
+    if parsed and parsed != "NONE":
+        return parsed, f"[VERIFY initial={initial_answer}]\n{raw}"
+    return None, f"[VERIFY initial={initial_answer}]\n{raw}"

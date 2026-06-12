@@ -169,10 +169,7 @@ def _all_options_hint(choices: Dict[str, str]) -> Optional[str]:
 
 
 def _many_choice_hint(choices: Dict[str, str]) -> Optional[str]:
-    """Warn the model when there are more than 4 options (A–J range).
-
-    Mirrors the bài tham chiếu logic in LLMAnswerer._many_choice_hint().
-    """
+    """Warn the model when there are more than 4 options (A–J range)."""
     n = len(choices)
     if n <= 4:
         return None
@@ -290,7 +287,10 @@ DOMAIN_SYSTEM_PROMPTS = {
         "4. Hỏi 'ĐÚNG/chính xác' → chọn đáp án khớp context nhất.\n"
         "5. Có bảng/số liệu → lấy đúng con số từ context, không tự tính nếu context đã cho kết quả.\n"
         "6. Không dùng kiến thức ngoài khi mâu thuẫn context.\n"
-        "7. Đọc hết A,B,C,D — không mặc định chọn A.\n"
+        "7. Trước khi chọn, tự xác định 1 câu/đoạn evidence trong context cho từng lựa chọn còn lại; không chọn nếu chỉ thấy từ khóa trùng lặp nhưng evidence không trả lời câu hỏi.\n"
+        "8. Với câu hỏi ngày/tháng/số tiền/số liệu, so khác biệt từng con số trong choices với context.\n"
+        "9. Với câu hỏi 'KHÔNG còn bắt buộc' hoặc 'không phải', chọn lựa chọn bị context loại bỏ/không yêu cầu, không chọn thứ vẫn được yêu cầu.\n"
+        "10. Đọc hết A,B,C,D — không mặc định chọn A.\n"
         f"{FINAL_JSON_RULE}"
     ),
 
@@ -320,7 +320,9 @@ DOMAIN_SYSTEM_PROMPTS = {
         "6. 'Tất cả các phương án trên' chỉ khi mọi đáp án còn lại đều đúng.\n"
         "7. Cảnh giác với các phương án phủ quát như 'Tất cả các phương án trên' hoặc 'Cả a, b, c đều đúng' khi hỏi về tư tưởng Hồ Chí Minh hoặc các chủ đề lịch sử/chính trị. Thông thường chỉ có MỘT đáp án cụ thể là đúng và chính xác nhất. Không chọn phương án 'Tất cả' trừ khi bạn hoàn toàn chắc chắn mọi phương án đơn lẻ đều hoàn toàn đúng.\n"
         "8. Đối với các câu hỏi có rất nhiều đáp án lựa chọn (từ 5 đáp án trở lên, ví dụ A đến J), hãy so sánh các sự khác biệt nhỏ giữa từng phương án và loại trừ các đáp án chứa thông tin sai lệch/vô lý từng bước một.\n"
-        "9. Đọc hết các lựa chọn trước khi chọn.\n"
+        "9. Với câu hỏi hỏi chi tiết cụ thể như 'ai', 'ở đâu', 'bao nhiêu', 'bước đầu tiên', 'thành phần hồ sơ', ưu tiên đáp án khớp đúng chi tiết thay vì đáp án rộng/chung chung.\n"
+        "10. Nếu đáp án có dạng 'Câu trả lời nằm ngoài phạm vi' hoặc từ chối, chỉ chọn khi câu hỏi thật sự không thể trả lời bằng các lựa chọn còn lại.\n"
+        "11. Đọc hết các lựa chọn trước khi chọn.\n"
         f"{FINAL_JSON_RULE}"
     ),
 
@@ -332,10 +334,11 @@ DOMAIN_SYSTEM_PROMPTS = {
         "2. Hỏi 'sai/không đúng/ngoại trừ/KHÔNG chính xác' → chọn đáp án SAI (dù các đáp án khác nghe đúng).\n"
         "3. Hỏi 'đúng/chính xác' → chọn đáp án ĐÚNG nhất.\n"
         "4. Đánh giá TỪNG đáp án độc lập; không chọn vì nghe hay/hợp lý nếu câu hỏi hỏi cái SAI.\n"
-        "5. Phát biểu khoa học/kinh tế: kiểm tra đúng/sai nội dung, không tính toán trừ khi cần.\n"
-        "6. 'Tất cả các phương án trên' chỉ khi mọi đáp án còn lại đều đúng.\n"
-        "7. Cảnh giác với các phương án phủ quát như 'Tất cả các phương án trên' hoặc 'Cả a, b, c đều đúng' khi hỏi về tư tưởng Hồ Chí Minh hoặc các chủ đề lịch sử/chính trị. Thông thường chỉ có MỘT đáp án cụ thể là đúng và chính xác nhất. Không chọn phương án 'Tất cả' trừ khi bạn hoàn toàn chắc chắn mọi phương án đơn lẻ đều hoàn toàn đúng.\n"
-        "8. Đối với các câu hỏi có rất nhiều đáp án lựa chọn (từ 5 đáp án trở lên, ví dụ A đến J), hãy so sánh các sự khác biệt nhỏ giữa từng phương án và loại trừ các đáp án chứa thông tin sai lệch/vô lý từng bước một.\n"
+        "5. Nếu câu hỏi không hỏi 'phát biểu/nhận định đúng-sai' mà hỏi một kiến thức cụ thể, hãy chọn đáp án cụ thể đúng nhất, không mặc định chọn 'Tất cả/Cả a,b,c'.\n"
+        "6. Phát biểu khoa học/kinh tế: kiểm tra đúng/sai nội dung, không tính toán trừ khi cần.\n"
+        "7. 'Tất cả các phương án trên' chỉ khi mọi đáp án còn lại đều đúng.\n"
+        "8. Cảnh giác với các phương án phủ quát như 'Tất cả các phương án trên' hoặc 'Cả a, b, c đều đúng' khi hỏi về tư tưởng Hồ Chí Minh hoặc các chủ đề lịch sử/chính trị. Thông thường chỉ có MỘT đáp án cụ thể là đúng và chính xác nhất. Không chọn phương án 'Tất cả' trừ khi bạn hoàn toàn chắc chắn mọi phương án đơn lẻ đều hoàn toàn đúng.\n"
+        "9. Đối với các câu hỏi có rất nhiều đáp án lựa chọn (từ 5 đáp án trở lên, ví dụ A đến J), hãy so sánh các sự khác biệt nhỏ giữa từng phương án và loại trừ các đáp án chứa thông tin sai lệch/vô lý từng bước một.\n"
         f"{FINAL_JSON_RULE}"
     ),
 

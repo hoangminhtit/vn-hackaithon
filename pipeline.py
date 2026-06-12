@@ -19,7 +19,9 @@ from utils.reasoning import (
     answer_with_cot,
     should_use_cot,
     should_use_pot_for_science,
+    should_verify_answer,
     solve_science_with_pot,
+    verify_answer,
 )
 
 
@@ -65,6 +67,17 @@ def _llm_route_or_fallback(processed: Dict, llm_client: Optional[LLMClient]) -> 
 def _llm_answer_or_fallback(
     processed: Dict, domain: str, llm_client: Optional[LLMClient]
 ) -> Tuple[str, str, bool]:
+    """Giải câu hỏi MCQ bằng cách kết hợp Heuristic Solvers và LLM với nhiều tầng fallback.
+
+    Luồng ưu tiên:
+    1. Heuristic-only: Nếu không dùng LLM, chạy trực tiếp heuristic solver tương ứng của domain.
+    2. Ignore-answer: Early exit bằng heuristic quét pattern từ chối trực tiếp (bỏ qua LLM).
+    3. Specialized math solvers: Kiểm tra nhanh các bài toán đặc thù bằng công thức cứng (Early exit).
+    4. Program of Thought (PoT): Dùng Python sandbox để giải các câu hỏi định lượng/ký hiệu toán học.
+    5. Chain of Thought (CoT): Suy luận từng bước trước khi trích xuất kết quả cho các câu hỏi lý thuyết phức tạp.
+    6. LLM Standard chat: Chat trực tiếp với prompt chuyên biệt của từng domain.
+    7. Fallback: Nếu tất cả các bước LLM/sandbox lỗi hoặc parse thất bại, quay về heuristic solver tương ứng.
+    """
     if llm_client is None:
         return DOMAIN_RUNNERS.get(domain, multi_domain.solve)(processed), "", True
 
@@ -75,6 +88,16 @@ def _llm_answer_or_fallback(
     specialized = math.solve_specialized(processed["question"], processed["choices"])
     if specialized:
         return specialized, "[HEURISTIC_SPECIALIZED]", False
+
+    if domain == "multi_domain":
+        specialized = multi_domain.solve_specialized(processed["question"], processed["choices"])
+        if specialized:
+            return specialized, "[HEURISTIC_SPECIALIZED_MULTI]", False
+
+    if domain == "should_correct":
+        specialized = should_correct.solve_specialized(processed["question"], processed["choices"])
+        if specialized:
+            return specialized, "[HEURISTIC_SPECIALIZED_SHOULD_CORRECT]", False
 
     if domain == "science" and should_use_pot_for_science(processed["question"], processed["choices"]):
         try:
@@ -115,6 +138,19 @@ def _llm_answer_or_fallback(
                 processed["choices"],
             )
             if cot_answer:
+                if should_verify_answer(domain, processed["num_choices"]):
+                    verified, verify_trace = verify_answer(
+                        llm_client,
+                        domain,
+                        system_prompt,
+                        user_prompt,
+                        cot_answer,
+                        cot_trace,
+                        processed["question"],
+                        processed["choices"],
+                    )
+                    if verified:
+                        return verified, f"{cot_trace}\n{verify_trace}", False
                 return cot_answer, cot_trace, False
 
         raw_answer = llm_client.chat(
@@ -125,6 +161,19 @@ def _llm_answer_or_fallback(
         )
         parsed = parse_answer(raw_answer, processed["num_choices"])
         if parsed and parsed != "NONE":
+            if should_verify_answer(domain, processed["num_choices"]):
+                verified, verify_trace = verify_answer(
+                    llm_client,
+                    domain,
+                    system_prompt,
+                    user_prompt,
+                    parsed,
+                    raw_answer,
+                    processed["question"],
+                    processed["choices"],
+                )
+                if verified:
+                    return verified, f"{raw_answer}\n{verify_trace}", False
             return parsed, raw_answer, False
     except Exception as exc:
         if os.getenv("DEBUG_LLM", "").strip() == "1":
