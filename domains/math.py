@@ -669,6 +669,44 @@ def _solve_sulfur_oxide_percent(question: str, choices: Dict[str, str]) -> Optio
     return None
 
 
+def _solve_debt_interest_amount(question: str, choices: Dict[str, str]) -> Optional[str]:
+    qn = normalize_for_match(question)
+    if "lãi suất" not in qn or not any(h in qn for h in ("khoản nợ", "tiền gốc", "số tiền gốc", "gốc")):
+        return None
+    if not any(h in qn for h in ("cuối", "sau", "tổng cộng", "phải trả")):
+        return None
+
+    nums = [_parse_vn_number(n) for n in NUMBER_RE.findall(question)]
+    nums = [n for n in nums if n is not None]
+    if len(nums) < 3:
+        return None
+
+    principal_candidates = [n for n in nums if n >= 1000]
+    if not principal_candidates:
+        return None
+    principal = principal_candidates[0]
+
+    pct_match = re.search(r"(\d+(?:[.,]\d+)?)\s*%", question)
+    if not pct_match:
+        return None
+    rate = (_parse_vn_number(pct_match.group(1)) or 0.0) / 100.0
+    if rate <= 0:
+        return None
+
+    year_match = re.search(r"(?:cuối|sau)\s+(\d+(?:[.,]\d+)?)\s+năm", question, re.IGNORECASE)
+    if not year_match:
+        year_match = re.search(r"(\d+(?:[.,]\d+)?)\s+năm", question, re.IGNORECASE)
+    years = _parse_vn_number(year_match.group(1)) if year_match else None
+    if not years or years <= 0:
+        return None
+
+    if any(h in qn for h in ("lãi kép", "ghép lãi", "compound")):
+        target = principal * ((1.0 + rate) ** years)
+    else:
+        target = principal * (1.0 + rate * years)
+    return _pick_closest_numeric_choice(choices, target)
+
+
 def _solve_compound_amount_two_years(question: str, choices: Dict[str, str]) -> Optional[str]:
     if not _public_patterns_enabled():
         return None
@@ -745,6 +783,7 @@ _SPECIALIZED_SOLVERS = (
     _solve_carbon_percent_from_co2,
     _solve_three_phase_three_wire_wattmeter,
     _solve_sulfur_oxide_percent,
+    _solve_debt_interest_amount,
     _solve_compound_amount_two_years,
     _solve_kennie_printer_book_value,
     _solve_malformed_triangular_eigenvalues,

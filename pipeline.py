@@ -19,7 +19,9 @@ from utils.reasoning import (
     answer_with_cot,
     should_use_cot,
     should_use_pot_for_science,
+    should_verify_answer,
     solve_science_with_pot,
+    verify_answer,
 )
 
 
@@ -125,6 +127,19 @@ def _llm_answer_or_fallback(
                 processed["choices"],
             )
             if cot_answer:
+                if should_verify_answer(domain, processed["num_choices"]):
+                    verified, verify_trace = verify_answer(
+                        llm_client,
+                        domain,
+                        system_prompt,
+                        user_prompt,
+                        cot_answer,
+                        cot_trace,
+                        processed["question"],
+                        processed["choices"],
+                    )
+                    if verified:
+                        return verified, f"{cot_trace}\n{verify_trace}", False
                 return cot_answer, cot_trace, False
 
         raw_answer = llm_client.chat(
@@ -135,6 +150,19 @@ def _llm_answer_or_fallback(
         )
         parsed = parse_answer(raw_answer, processed["num_choices"])
         if parsed and parsed != "NONE":
+            if should_verify_answer(domain, processed["num_choices"]):
+                verified, verify_trace = verify_answer(
+                    llm_client,
+                    domain,
+                    system_prompt,
+                    user_prompt,
+                    parsed,
+                    raw_answer,
+                    processed["question"],
+                    processed["choices"],
+                )
+                if verified:
+                    return verified, f"{raw_answer}\n{verify_trace}", False
             return parsed, raw_answer, False
     except Exception as exc:
         if os.getenv("DEBUG_LLM", "").strip() == "1":
