@@ -179,7 +179,8 @@ def answer_with_cot(
     reasoning_max = int(os.getenv("LLM_COT_MAX_TOKENS", "384"))
     reasoning_system = (
         system_prompt
-        + "\nHãy suy luận ngắn gọn theo các bước: xác định yêu cầu, đánh giá từng lựa chọn, loại trừ, kết luận."
+        + "\nHãy suy luận ngắn gọn, chỉ giữ các bước cần thiết để chọn đáp án đúng.\n"
+          "Không lan man, nhưng vẫn phải kiểm tra từng lựa chọn nếu cần."
     )
     reasoning_user = (
         user_prompt

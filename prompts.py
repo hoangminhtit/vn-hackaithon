@@ -100,11 +100,11 @@ def _domain_hint_block(domain: str, question: str) -> str:
     if domain == "should_correct":
         if polarity == "false":
             lines.append(
-                "⚠️ Câu hỏi hỏi phát biểu SAI/KHÔNG ĐÚNG — chọn đáp án SAI, "
-                "KHÔNG chọn đáp án nghe hợp lý nhất."
+                "⚠️ Câu hỏi yêu cầu tìm phát biểu SAI. Không chọn đáp án đúng. "
+                "Đối chiếu kỹ để tìm điểm không chính xác trong các lựa chọn."
             )
         elif polarity == "true":
-            lines.append("⚠️ Câu hỏi hỏi phát biểu ĐÚNG — chọn đáp án CHÍNH XÁC NHẤT.")
+            lines.append("⚠️ Câu hỏi yêu cầu tìm phát biểu ĐÚNG nhất.")
         else:
             lines.append("Đọc kỹ câu hỏi để biết cần tìm phát biểu đúng hay sai.")
         lines.append("Đánh giá từng đáp án A,B,C,D độc lập trước khi chọn.")
@@ -161,9 +161,18 @@ def _domain_hint_block(domain: str, question: str) -> str:
 def _all_options_hint(choices: Dict[str, str]) -> Optional[str]:
     for text in choices.values():
         t = text.lower()
-        if "tất cả" in t and "phương án" in t:
+        if any(w in t for w in (
+            "tất cả",
+            "cả a",
+            "cả b",
+            "cả c",
+            "cả a và b",
+            "cả ba",
+            "tất cả các phương án"
+        )):
             return (
-                "Có đáp án 'Tất cả các phương án trên' — chỉ chọn nếu MỌI đáp án còn lại đều đúng."
+                "Chú ý: Có đáp án dạng bao quát (Tất cả / Cả a,b,c). "
+                "Hãy kiểm tra độc lập từng lựa chọn trước khi quyết định chọn phương án này."
             )
     return None
 
