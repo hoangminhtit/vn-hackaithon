@@ -134,6 +134,10 @@ def _llm_answer_or_fallback(
             hint = multi_domain.domain_hints(processed["question"], processed["choices"])
             if hint:
                 user_prompt = f"{hint}\n\n{user_prompt}"
+        if domain == "should_correct":
+            hint = should_correct.domain_hints(processed["question"], processed["choices"])
+            if hint:
+                user_prompt = f"{hint}\n\n{user_prompt}"
 
         if domain == "rag" and should_use_rag_evidence():
             rag_answer, rag_trace = answer_rag_with_evidence(
