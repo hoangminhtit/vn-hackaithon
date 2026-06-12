@@ -86,6 +86,11 @@ exec(compile(code, "<pot>", "exec"), namespace, namespace)
 
 
 def should_use_pot_for_science(question: str, choices: Dict[str, str]) -> bool:
+    """Xác định xem có nên sử dụng Program of Thought (PoT) để giải toán/khoa học hay không.
+
+    Phương pháp này giúp sinh code Python để giải quyết các câu hỏi định lượng phức tạp,
+    được gọi bởi pipeline._llm_answer_or_fallback.
+    """
     if not _env_flag("LLM_USE_POT_SCIENCE", "1"):
         return False
     text = question.lower() + "\n" + "\n".join(choices.values()).lower()

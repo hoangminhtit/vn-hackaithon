@@ -52,7 +52,7 @@ def parse_answer(raw_output: str, num_choices: int) -> str:
 
     # ── Layer 3: Vietnamese conclusion phrases (most → least specific) ───────
     vn_conclusion_patterns = [
-        # "Đáp án cuối: A" — CoT pattern (bài tham chiếu)
+        # "Đáp án cuối: A" — CoT pattern
         r'[Đđ]áp\s+án\s+cu[oô]i\s*[:\-]\s*\**\s*([A-Z])\b',
         # "Đáp án đúng là A" / "Đáp án là A"
         r'[Đđ]áp\s+án\s+(?:đúng\s+)?(?:là|:)\s*\**\s*([A-Z])\b',

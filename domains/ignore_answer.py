@@ -24,6 +24,11 @@ REFUSE_HINTS = (
 
 
 def solve(processed: Dict) -> str:
+    """Giải quyết câu hỏi thuộc ignore_answer domain bằng heuristic trực tiếp.
+
+    - Bỏ qua LLM hoàn toàn đối với domain này để tránh lỗi từ chối của LLM nhưng trả sai nhãn đáp án.
+    - Quét trực tiếp các pattern từ chối trong danh sách choices.
+    """
     choices = processed["choices"]
     for label, text in choices.items():
         normalized = normalize_for_match(text)

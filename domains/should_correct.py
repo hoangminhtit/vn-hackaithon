@@ -44,6 +44,11 @@ def solve_specialized(question: str, choices: Dict[str, str]) -> str:
 
 
 def solve(processed: Dict) -> str:
+    """Giải quyết câu hỏi thuộc should_correct domain bằng heuristic.
+
+    Dựa vào prompts.question_polarity để xác định hướng phát biểu đúng/sai,
+    đồng thời giữ nhánh specialized khi được bật bằng env.
+    """
     specialized = solve_specialized(processed["question"], processed["choices"])
     if specialized:
         return specialized

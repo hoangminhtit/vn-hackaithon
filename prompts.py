@@ -169,10 +169,7 @@ def _all_options_hint(choices: Dict[str, str]) -> Optional[str]:
 
 
 def _many_choice_hint(choices: Dict[str, str]) -> Optional[str]:
-    """Warn the model when there are more than 4 options (A–J range).
-
-    Mirrors the bài tham chiếu logic in LLMAnswerer._many_choice_hint().
-    """
+    """Warn the model when there are more than 4 options (A–J range)."""
     n = len(choices)
     if n <= 4:
         return None

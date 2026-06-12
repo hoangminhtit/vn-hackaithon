@@ -16,6 +16,8 @@ def preprocess(item: Dict) -> Dict:
     passage = ""
     question_clean = question_raw
 
+    # Các patterns tách passage dùng regex.
+    # Đối chiếu/đồng bộ với _PASSAGE_MARKERS phát hiện RAG trong router.py.
     passage_patterns = [
         r"(Đoạn thông tin:.*?)(?=Câu hỏi:)",
         r"(\[1\].*?)(?=Câu hỏi:)",
