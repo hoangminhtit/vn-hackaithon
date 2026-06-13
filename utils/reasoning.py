@@ -179,7 +179,8 @@ def answer_with_cot(
     reasoning_max = int(os.getenv("LLM_COT_MAX_TOKENS", "384"))
     reasoning_system = (
         system_prompt
-        + "\nHãy suy luận ngắn gọn theo các bước: xác định yêu cầu, đánh giá từng lựa chọn, loại trừ, kết luận."
+        + "\nHãy suy luận ngắn gọn, chỉ giữ các bước cần thiết để chọn đáp án đúng.\n"
+          "Không lan man, nhưng vẫn phải kiểm tra từng lựa chọn nếu cần."
     )
     reasoning_user = (
         user_prompt
@@ -268,3 +269,60 @@ def verify_answer(
     if parsed and parsed != "NONE":
         return parsed, f"[VERIFY initial={initial_answer}]\n{raw}"
     return None, f"[VERIFY initial={initial_answer}]\n{raw}"
+
+
+def should_use_rag_evidence() -> bool:
+    return _env_flag("LLM_USE_RAG_EVIDENCE", "1")
+
+
+def answer_rag_with_evidence(
+    llm_client: LLMClient,
+    user_prompt: str,
+    question: str,
+    choices: Dict[str, str],
+) -> Tuple[Optional[str], str]:
+    labels = ", ".join(choices.keys())
+    max_tokens = int(os.getenv("LLM_RAG_EVIDENCE_MAX_TOKENS", "512"))
+    system_prompt = (
+        "Bạn là trợ lý trả lời trắc nghiệm RAG. Chỉ dùng context trong prompt. "
+        "Phải tìm evidence trực tiếp trong context, không dùng kiến thức ngoài."
+    )
+    evidence_prompt = (
+        f"{user_prompt}\n\n"
+        "Với mỗi lựa chọn, thực hiện theo đúng 2 bước:\n"
+        "  Bước 1 — Trích dẫn: ghi ngắn câu hoặc cụm từ trong context liên quan nhất đến lựa chọn đó "
+        "(nếu không tìm thấy câu nào liên quan, ghi 'Không tìm thấy').\n"
+        "  Bước 2 — Phán quyết: dựa vào câu vừa trích dẫn, ghi SUPPORTED nếu xác nhận lựa chọn, "
+        "CONTRADICTED nếu mâu thuẫn, NOT_FOUND nếu context không đủ rõ.\n"
+        "Chú ý đặc biệt: ngày/tháng/số liệu cụ thể, từ phủ định KHÔNG/ngoại trừ, "
+        "và các lựa chọn chỉ khác nhau một chi tiết nhỏ.\n"
+        f"Kết thúc bằng đúng một dòng: Đáp án cuối: <một chữ cái trong {{{labels}}}>."
+    )
+    reasoning = llm_client.chat(
+        system_prompt,
+        evidence_prompt,
+        max_tokens=max_tokens,
+        enable_thinking=False,
+        apply_global_cap=False,
+    )
+
+    extract_system = (
+        "Bạn là bộ trích xuất đáp án. Chỉ trả về đúng một dòng JSON, không giải thích."
+    )
+    extract_user = (
+        f"Phân tích RAG:\n{reasoning}\n\n"
+        f"Câu hỏi:\n{question}\n\n"
+        f"Lựa chọn:\n{format_choices(choices)}\n\n"
+        'Trả lời đúng format: {"answer":"X"}'
+    )
+    raw = llm_client.chat(
+        extract_system,
+        extract_user,
+        max_tokens=32,
+        enable_thinking=False,
+        apply_global_cap=False,
+    )
+    parsed = parse_answer(raw, len(choices))
+    if parsed and parsed != "NONE":
+        return parsed, f"[RAG_EVIDENCE]\n{reasoning}\n[EXTRACT]\n{raw}"
+    return None, f"[RAG_EVIDENCE]\n{reasoning}\n[EXTRACT]\n{raw}"

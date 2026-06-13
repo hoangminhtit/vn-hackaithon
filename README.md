@@ -126,6 +126,7 @@ LLM_USE_LLM_ROUTE=0
 | `LLM_POT_MAX_TOKENS`, `LLM_COT_MAX_TOKENS` | Token cho nhánh reasoning, không bị giới hạn bởi `LLM_MAX_NEW_TOKENS` |
 | `LLM_USE_ANSWER_VERIFIER` | `1` = kiểm tra lại đáp án LLM cho RAG/should_correct/multi_domain trước khi chốt |
 | `LLM_VERIFY_MULTI` | `0` = tắt verifier cho multi_domain theo mặc định; bật `1` khi muốn kiểm thử |
+| `LLM_USE_RAG_EVIDENCE` | `1` = dùng nhánh trích evidence riêng cho RAG trước khi chốt đáp án |
 | `LLM_USE_PUBLIC_KNOWN_PATTERNS` | `0` = tắt rule bám public test; chỉ bật `1` khi debug public |
 | `LLAMA_N_GPU_LAYERS` | `-1` = all GPU, `0` = CPU only |
 | `LLAMA_N_CTX` | Context window (mặc định `4096`) |

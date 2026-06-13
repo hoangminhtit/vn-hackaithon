@@ -16,7 +16,9 @@ from utils.llm import LLMClient
 from utils.postprocess import parse_answer, parse_route_output
 from utils.preprocess import preprocess
 from utils.reasoning import (
+    answer_rag_with_evidence,
     answer_with_cot,
+    should_use_rag_evidence,
     should_use_cot,
     should_use_pot_for_science,
     should_verify_answer,
@@ -125,9 +127,40 @@ def _llm_answer_or_fallback(
             if len(processed["passage"]) <= full_limit:
                 domain_context = processed["passage"]
             else:
-                domain_context = bm25_retrieve(processed["passage"], processed["question"])
+                # Query expansion: ghép choices vào query để BM25 tìm được
+                # đoạn evidence liên quan đến các lựa chọn, không chỉ câu hỏi.
+                choice_text = " ".join(processed["choices"].values())
+                expanded_query = processed["question"] + " " + choice_text
+                domain_context = bm25_retrieve(processed["passage"], expanded_query)
         system_prompt = DOMAIN_SYSTEM_PROMPTS[domain]
         user_prompt = domain_user_prompt(domain, domain_context, processed["question"], processed["choices"])
+        if domain == "multi_domain":
+            hint = multi_domain.domain_hints(processed["question"], processed["choices"])
+            if hint:
+                user_prompt = f"{hint}\n\n{user_prompt}"
+
+        if domain == "rag" and should_use_rag_evidence():
+            rag_answer, rag_trace = answer_rag_with_evidence(
+                llm_client,
+                user_prompt,
+                processed["question"],
+                processed["choices"],
+            )
+            if rag_answer:
+                if should_verify_answer(domain, processed["num_choices"]):
+                    verified, verify_trace = verify_answer(
+                        llm_client,
+                        domain,
+                        system_prompt,
+                        user_prompt,
+                        rag_answer,
+                        rag_trace,
+                        processed["question"],
+                        processed["choices"],
+                    )
+                    if verified:
+                        return verified, f"{rag_trace}\n{verify_trace}", False
+                return rag_answer, rag_trace, False
 
         if should_use_cot(domain, processed["question"], processed["choices"]):
             cot_answer, cot_trace = answer_with_cot(

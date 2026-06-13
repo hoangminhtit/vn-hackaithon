@@ -551,8 +551,6 @@ def _solve_laplace_polynomial(question: str, choices: Dict[str, str]) -> Optiona
 
 
 def _solve_alveolar_oxygen_pressure(question: str, choices: Dict[str, str]) -> Optional[str]:
-    if not _public_patterns_enabled():
-        return None
     qn = normalize_for_match(question)
     if "áp suất riêng phần" not in qn or "oxy" not in qn or "phế nang" not in qn:
         return None
@@ -648,8 +646,6 @@ def _solve_carbon_percent_from_co2(question: str, choices: Dict[str, str]) -> Op
 
 
 def _solve_three_phase_three_wire_wattmeter(question: str, choices: Dict[str, str]) -> Optional[str]:
-    if not _public_patterns_enabled():
-        return None
     qn = normalize_for_match(question)
     if "3 pha 3 dây" not in qn or "không đối xứng" not in qn or "công suất" not in qn:
         return None
