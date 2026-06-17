@@ -27,29 +27,6 @@ cp .env.example .env
 
 `requirements.txt` không cài `llama-cpp-python` trực tiếp vì Linux/Kaggle dễ kéo nhầm CPU-only wheel. Trên Kaggle, ưu tiên cài CUDA prebuilt wheel thay vì build source:
 
-```python
-import torch
-
-cuda = torch.version.cuda or ""
-wheel_tags = {
-    "11.8": "cu118",
-    "12.1": "cu121",
-    "12.2": "cu122",
-    "12.3": "cu123",
-    "12.4": "cu124",
-    "12.5": "cu125",
-    "13.0": "cu130",
-    "13.2": "cu132",
-}
-major_minor = ".".join(cuda.split(".")[:2])
-tag = wheel_tags.get(major_minor)
-if tag is None and major_minor.startswith("12."):
-    tag = "cu125"
-if tag is None:
-    tag = "cu125"
-print("CUDA:", cuda, "llama-cpp wheel:", tag)
-```
-
 ```bash
 pip uninstall -y llama-cpp-python
 pip install --no-cache-dir --force-reinstall "llama-cpp-python>=0.3.0" \
@@ -71,8 +48,8 @@ data/public-test_1780368312.json
 ### 3. Chạy
 
 ```bash
-chmod +x run.sh   # một lần
-./run.sh
+chmod +x scripts/run.sh   # một lần
+bash scripts/run.sh
 ```
 
 Kết quả: `output/pred.csv` (cột `qid`, `answer`).
@@ -92,12 +69,26 @@ python3 run.py \
 Tuỳ chọn:
 
 ```bash
-./run.sh heuristic
-./run.sh llm data/public-test_1780368312.json output/pred.csv
-./run.sh --help
+bash scripts/run.sh heuristic
+bash scripts/run.sh llm data/public-test_1780368312.json output/pred.csv
+bash scripts/run.sh --help
 ```
 
-**Lưu ý:** Không `export COMPETITION=1` khi chạy local — biến đó chỉ dành cho container nộp BTC. `run.sh` đã `unset COMPETITION` sẵn.
+Chạy trên Kaggle với preset tự tìm input trong `/kaggle/input`:
+
+```bash
+!bash /kaggle/working/vn-hackaithon/scripts/run.sh kaggle
+```
+
+Hoặc truyền đúng dataset path như command hiện tại:
+
+```bash
+!bash /kaggle/working/vn-hackaithon/scripts/run.sh kaggle \
+  "/kaggle/input/datasets/binbinkin/vn-hackaithon/public-test_1780368312.json" \
+  "output/pred.csv"
+```
+
+**Lưu ý:** Không `export COMPETITION=1` khi chạy local/Kaggle trực tiếp — biến đó chỉ dành cho container nộp BTC. `scripts/run.sh` đã `unset COMPETITION` sẵn.
 
 ---
 
@@ -127,7 +118,6 @@ LLM_USE_LLM_ROUTE=0
 | `LLM_USE_ANSWER_VERIFIER` | `1` = kiểm tra lại đáp án LLM cho RAG/should_correct/multi_domain trước khi chốt |
 | `LLM_VERIFY_MULTI` | `0` = tắt verifier cho multi_domain theo mặc định; bật `1` khi muốn kiểm thử |
 | `LLM_USE_RAG_EVIDENCE` | `1` = dùng nhánh trích evidence riêng cho RAG trước khi chốt đáp án |
-| `LLM_USE_PUBLIC_KNOWN_PATTERNS` | `0` = tắt rule bám public test; chỉ bật `1` khi debug public |
 | `LLAMA_N_GPU_LAYERS` | `-1` = all GPU, `0` = CPU only |
 | `LLAMA_N_CTX` | Context window (mặc định `4096`) |
 
@@ -175,12 +165,19 @@ test_0001,A
 
 ## Nộp BTC (Docker)
 
+Container được thiết kế theo đúng contract chấm của BTC:
+
+- BTC mount input vào `/data` với file `public_test.csv` hoặc `private_test.csv`.
+- Container tự chạy entrypoint, không cần truyền command.
+- Kết quả được ghi vào `/output/pred.csv`.
+- File output chỉ có hai cột `qid,answer`.
+
 ### Checklist ban tổ chức
 
 | Yêu cầu | Repo |
 |--------|------|
 | Image trên Docker Hub | Team `docker push` |
-| Entry-point đọc `/data/public_test.csv` hoặc `private_test.csv` | `docker_entry.sh` |
+| Entry-point đọc `/data/public_test.csv` hoặc `private_test.csv` | `scripts/docker_entry.sh` |
 | Ghi `/output/pred.csv` (`qid`, `answer`) | `run.py` |
 | Source + reproduce | README + lệnh dưới |
 | Thuyết minh | `PHUONG_PHAP.md` |
@@ -188,10 +185,10 @@ test_0001,A
 ### Chuẩn bị trước `docker build`
 
 1. Có `.env` ở root (copy từ `.env.example`) — được copy vào image lúc build.
-2. Thư mục `model/` **đã có file `.gguf`** (chạy `./run.sh` một lần nếu còn trống):
+2. Thư mục `model/` **đã có file `.gguf`** (chạy `bash scripts/run.sh` một lần nếu còn trống):
 
 ```bash
-./run.sh
+bash scripts/run.sh
 ls model/*.gguf   # phải có file GGUF
 ```
 
@@ -202,7 +199,11 @@ Image bake sẵn GGUF model tại `/app/model` — BTC **không** cần mount `m
 ```bash
 docker build -t YOUR_USER/vn-hackathon-mcq:latest .
 docker push YOUR_USER/vn-hackathon-mcq:latest
+```
 
+Lệnh reproduce giống cách BTC chấm container:
+
+```bash
 docker run --rm \
   -v "$(pwd)/data:/data:ro" \
   -v "$(pwd)/output:/output" \
@@ -211,7 +212,15 @@ docker run --rm \
 head output/pred.csv
 ```
 
-Trong container: `COMPETITION=1`, `source /app/.env`, đọc CSV trong `/data`, ghi `/output/pred.csv`.
+Trong container: `COMPETITION=1`, `source /app/.env`, đọc CSV trong `/data`, ghi `/output/pred.csv`. Nếu cần chạy heuristic để kiểm tra nhanh không load model:
+
+```bash
+docker run --rm \
+  -e PIPELINE_MODE=heuristic \
+  -v "$(pwd)/data:/data:ro" \
+  -v "$(pwd)/output:/output" \
+  YOUR_USER/vn-hackathon-mcq:latest
+```
 
 **Input CSV BTC** — cột bắt buộc `qid`, `question`, và một trong:
 
@@ -231,8 +240,9 @@ Heuristic không LLM khi chấm (nếu cần): `docker run -e PIPELINE_MODE=heur
 ## Cấu trúc repo
 
 ```text
-├── run.sh / run.py          # Chạy local
-├── docker_entry.sh          # Entry-point BTC
+├── run.py                   # Python entrypoint
+├── scripts/run.sh           # Chạy local/Kaggle
+├── scripts/docker_entry.sh  # Entry-point BTC
 ├── Dockerfile
 ├── pipeline.py / router.py / prompts.py
 ├── domains/                 # rag, math, multi_domain, …
@@ -249,9 +259,9 @@ Heuristic không LLM khi chấm (nếu cần): `docker run -e PIPELINE_MODE=heur
 
 | Lỗi | Cách xử lý |
 |-----|------------|
-| `No input in /data` | Đang `COMPETITION=1` thiếu CSV — local dùng `./run.sh` hoặc `--input` JSON |
-| `LLM mode requires local model id` | Thêm `HF_MODEL_ID` vào `.env` hoặc `./run.sh heuristic` |
-| `model/ không có file .gguf` khi `docker build` | Chạy `./run.sh` trước để tải GGUF |
+| `No input in /data` | Đang `COMPETITION=1` thiếu CSV — local dùng `bash scripts/run.sh` hoặc `--input` JSON |
+| `LLM mode requires local model id` | Thêm `HF_MODEL_ID` vào `.env` hoặc `bash scripts/run.sh heuristic` |
+| `model/ không có file .gguf` khi `docker build` | Chạy `bash scripts/run.sh` trước để tải GGUF |
 | `llama_cpp` build lỗi | Cài `cmake` và `build-essential` (Linux) hoặc Xcode CLI tools (macOS) |
 | JSON answer bị cắt | Tăng `LLM_ANSWER_MAX_TOKENS` (vd. 64) trong `.env` |
 
