@@ -20,8 +20,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Build llama-cpp-python TỪ SOURCE với CUDA support ───────────────────────
-# CMAKE_ARGS kích hoạt CUDA backend, CUDA_DOCKER_ARCH=all để tương thích mọi GPU
-RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=all" \
+# CMAKE_ARGS kích hoạt CUDA backend. Dùng danh sách arch cụ thể để tránh lỗi compute_ rỗng.
+ARG CUDA_ARCHITECTURES="75;80;86;89"
+RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}" \
     FORCE_CMAKE=1 \
     pip install --no-cache-dir --verbose \
     "llama-cpp-python>=0.3.0" --no-binary llama-cpp-python
