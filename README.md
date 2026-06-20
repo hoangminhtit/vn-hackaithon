@@ -4,10 +4,10 @@ Submission cho BTC dưới dạng Docker container. Container tự đọc dữ l
 
 ## Docker Hub
 
-Image nộp lên Docker Hub: https://hub.docker.com/repository/docker/hoangminhtit/vn-hackathon-mcq/general
+Image nộp lên Docker Hub: https://hub.docker.com/r/nguyenvanhung777/vn-hackathon-mcq
 
 ```text
-hoangminhtit/vn-hackathon-mcq:latest
+nguyenvanhung777/vn-hackathon-mcq:latest
 ```
 
 ## Entry-Point Contract
@@ -95,7 +95,7 @@ Chạy container giống cách BTC chấm:
 docker run --rm \
   -v "$(pwd)/data:/data:ro" \
   -v "$(pwd)/output:/output" \
-  YOUR_DOCKERHUB_USERNAME/vn-hackathon-mcq:latest
+  nguyenvanhung777/vn-hackathon-mcq:latest
 ```
 
 Nếu dùng private test:
@@ -112,7 +112,7 @@ Lệnh chạy giữ nguyên:
 docker run --rm \
   -v "$(pwd)/data:/data:ro" \
   -v "$(pwd)/output:/output" \
-  YOUR_DOCKERHUB_USERNAME/vn-hackathon-mcq:latest
+  nguyenvanhung777/vn-hackathon-mcq:latest
 ```
 
 Kiểm tra kết quả:
