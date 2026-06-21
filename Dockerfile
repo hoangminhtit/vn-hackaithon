@@ -20,14 +20,16 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Build llama-cpp-python TỪ SOURCE với CUDA support ───────────────────────
-# CMAKE_ARGS kích hoạt CUDA backend, CUDA_DOCKER_ARCH=all để tương thích mọi GPU
-RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=all" \
+# CMAKE_ARGS kích hoạt CUDA backend. Dùng danh sách arch cụ thể để tránh lỗi compute_ rỗng.
+ARG CUDA_ARCHITECTURES="75;80;86;89"
+RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}" \
     FORCE_CMAKE=1 \
     pip install --no-cache-dir --verbose \
     "llama-cpp-python>=0.3.0" --no-binary llama-cpp-python
 
 # Code + .env (nếu có lúc build)
-COPY docker_entry.sh run.py download_model.py pipeline.py router.py prompts.py few-shot.json ./
+COPY scripts/docker_entry.sh /app/docker_entry.sh
+COPY run.py download_model.py pipeline.py router.py prompts.py few-shot.json ./
 COPY domains ./domains
 COPY utils ./utils
 COPY .env* ./
@@ -57,7 +59,6 @@ ENV LLM_VERIFY_MULTI_MANY_CHOICES=0
 ENV LLM_VERIFY_MAX_TOKENS=320
 ENV LLM_USE_RAG_EVIDENCE=1
 ENV LLM_RAG_EVIDENCE_MAX_TOKENS=512
-ENV LLM_USE_PUBLIC_KNOWN_PATTERNS=0
 # LLAMA_N_GPU_LAYERS: để trống → Python tự auto-detect CUDA/CPU.
 # Override thủ công: docker run -e LLAMA_N_GPU_LAYERS=-1 ...  (GPU full)
 #                               -e LLAMA_N_GPU_LAYERS=0  ...  (CPU only)

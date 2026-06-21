@@ -1,263 +1,223 @@
 # VN Hackathon MCQ Solver
 
-Pipeline trắc nghiệm tiếng Việt: **route theo domain** → LLM local (Qwen GGUF via llama.cpp) + **fallback heuristic** khi parse/lỗi.
+Submission cho BTC dưới dạng Docker container. Container tự đọc dữ liệu trong `/data` và ghi kết quả ra `/output/pred.csv`.
 
-| Domain | Xử lý chính |
-|--------|-------------|
-| `rag` | BM25 trên passage + LLM (passage ngắn dùng full text) |
-| `science` | LLM toán/khoa học + heuristic số (co giãn, GDP, …) |
-| `multi_domain` | LLM tổng hợp |
-| `should_correct` | LLM kiểm tra đúng/sai |
-| `ignore_answer` | Heuristic (không gọi LLM) |
+## Docker Hub
 
-Thuyết minh chi tiết: [`PHUONG_PHAP.md`](PHUONG_PHAP.md)
-
----
-
-## Chạy thử trên máy
-
-### 1. Cài đặt (một lần)
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-```
-
-`requirements.txt` không cài `llama-cpp-python` trực tiếp vì Linux/Kaggle dễ kéo nhầm CPU-only wheel. Trên Kaggle, ưu tiên cài CUDA prebuilt wheel thay vì build source:
-
-```python
-import torch
-
-cuda = torch.version.cuda or ""
-wheel_tags = {
-    "11.8": "cu118",
-    "12.1": "cu121",
-    "12.2": "cu122",
-    "12.3": "cu123",
-    "12.4": "cu124",
-    "12.5": "cu125",
-    "13.0": "cu130",
-    "13.2": "cu132",
-}
-major_minor = ".".join(cuda.split(".")[:2])
-tag = wheel_tags.get(major_minor)
-if tag is None and major_minor.startswith("12."):
-    tag = "cu125"
-if tag is None:
-    tag = "cu125"
-print("CUDA:", cuda, "llama-cpp wheel:", tag)
-```
-
-```bash
-pip uninstall -y llama-cpp-python
-pip install --no-cache-dir --force-reinstall "llama-cpp-python>=0.3.0" \
-  --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/cu125"
-```
-
-Nếu cell Python ở trên in ra tag khác `cu125`, thay phần cuối URL bằng tag đó, ví dụ `cu124`. Với Kaggle CUDA `12.8`, dùng `cu125`. Sau khi chạy lệnh trên trong Kaggle notebook, restart kernel/runtime rồi chạy lại project. Khi load model, log phải có `llama-cpp-python CUDA backend xác nhận` hoặc dòng llama.cpp kiểu `offloaded ... layers to GPU`.
-
-> **Lưu ý macOS:** Trên Apple Silicon, `llama-cpp-python` tự dùng Metal (GPU) khi cài từ pip. Trên Linux CUDA phải build với `-DGGML_CUDA=on` như trên.
-
-### 2. Dữ liệu
-
-Đặt public test JSON vào `data/`:
+Image nộp lên Docker Hub: https://hub.docker.com/r/nguyenvanhung777/vn-hackathon-mcq
 
 ```text
-data/public-test_1780368312.json
+nguyenvanhung777/vn-hackathon-mcq:latest
 ```
 
-### 3. Chạy
+## Entry-Point Contract
+
+Container được thiết kế đúng theo yêu cầu đầu ra của BTC:
+
+- Input được mount vào `/data`.
+- Entrypoint tự tìm `/data/public_test.csv`; nếu không có thì dùng `/data/private_test.csv`.
+- Output được ghi vào `/output/pred.csv`.
+- File output có đúng hai cột:
+
+```csv
+qid,answer
+```
+
+Trong đó `answer` là một trong `A/B/C/D` hoặc các nhãn lựa chọn hợp lệ nếu đề có nhiều hơn 4 lựa chọn.
+
+Input CSV cần có các cột bắt buộc:
+
+```text
+qid,question
+```
+
+Và một trong hai cách biểu diễn lựa chọn:
+
+```text
+A,B,C,D,...
+```
+
+hoặc:
+
+```text
+choices
+```
+
+Trong đó `choices` là JSON array hoặc chuỗi phân tách bằng `|`.
+
+## Reproduce
+
+Có 2 cách chạy lại kết quả: chạy bằng script trong repo hoặc chạy bằng Docker container.
+
+### Cách 1: Chạy bằng `scripts/`
+
+Chuẩn bị input CSV:
+
+```text
+data/
+  public_test.csv
+output/
+```
+
+Chạy pipeline bằng script:
 
 ```bash
-chmod +x run.sh   # một lần
-./run.sh
+bash scripts/run.sh llm data/public_test.csv output/pred.csv
 ```
 
-Kết quả: `output/pred.csv` (cột `qid`, `answer`).
-
-Lần chạy đầu tiên sẽ **tự tải file GGUF** (~2.7 GB cho Q4_K_M) từ HuggingFace vào `model/`.
-
-Gọi trực tiếp:
+Nếu dùng private test:
 
 ```bash
-python3 run.py \
-  --input data/public-test_1780368312.json \
-  --output output/pred.csv \
-  --mode llm \
-  --workers 1
+bash scripts/run.sh llm data/private_test.csv output/pred.csv
 ```
 
-Tuỳ chọn:
+Kiểm tra kết quả:
 
 ```bash
-./run.sh heuristic
-./run.sh llm data/public-test_1780368312.json output/pred.csv
-./run.sh --help
+head output/pred.csv
 ```
 
-**Lưu ý:** Không `export COMPETITION=1` khi chạy local — biến đó chỉ dành cho container nộp BTC. `run.sh` đã `unset COMPETITION` sẵn.
+Output được ghi tại `output/pred.csv` với hai cột `qid,answer`.
 
----
+### Cách 2: Chạy bằng Docker
 
-## Cấu hình `.env`
+Chuẩn bị thư mục local:
+
+```text
+data/
+  public_test.csv
+output/
+```
+
+Chạy container giống cách BTC chấm:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/data:/data:ro" \
+  -v "$(pwd)/output:/output" \
+  nguyenvanhung777/vn-hackathon-mcq:latest
+```
+
+Nếu dùng private test:
+
+```text
+data/
+  private_test.csv
+output/
+```
+
+Lệnh chạy giữ nguyên:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/data:/data:ro" \
+  -v "$(pwd)/output:/output" \
+  nguyenvanhung777/vn-hackathon-mcq:latest
+```
+
+Kiểm tra kết quả:
+
+```bash
+head output/pred.csv
+```
+
+Output kỳ vọng:
+
+```csv
+qid,answer
+test_0001,A
+test_0002,C
+```
+
+<!-- ## Build Và Push Image
+
+Trước khi build, cần có:
+
+- `.env` ở root repo.
+- Thư mục `model/` chứa file GGUF `Qwen3.5-4B-Q4_K_M.gguf`.
+
+Nếu chưa có model, có thể tải bằng:
+
+```bash
+python download_model.py
+```
+
+Build image:
+
+```bash
+docker build -t YOUR_DOCKERHUB_USERNAME/vn-hackathon-mcq:latest .
+```
+
+Mặc định image build CUDA cho các kiến trúc `75;80;86;89` (T4/Ampere/Ada). Nếu môi trường chấm dùng GPU khác, có thể override:
+
+```bash
+docker build \
+  --build-arg CUDA_ARCHITECTURES="75;80;86;89" \
+  -t YOUR_DOCKERHUB_USERNAME/vn-hackathon-mcq:latest .
+```
+
+Push lên Docker Hub:
+
+```bash
+docker push YOUR_DOCKERHUB_USERNAME/vn-hackathon-mcq:latest
+``` -->
+
+## Cấu Hình Đã Dùng
+
+Các biến chính trong `.env.example`:
 
 ```env
 HF_MODEL_ID=unsloth/Qwen3.5-4B-GGUF
 GGUF_FILE=Qwen3.5-4B-Q4_K_M.gguf
 HF_LOCAL_DIR=model
+
 LLM_MAX_NEW_TOKENS=16
 LLM_ANSWER_MAX_TOKENS=16
 LLM_USE_LLM_ROUTE=0
+
+LLM_USE_POT_SCIENCE=1
+LLM_POT_MAX_TOKENS=512
+LLM_POT_RETRIES=1
+LLM_POT_TIMEOUT=2.0
+
+LLM_USE_COT_SHOULD_CORRECT=1
+LLM_USE_COT_MULTI=1
+LLM_COT_MAX_TOKENS=384
+
+LLM_USE_ANSWER_VERIFIER=1
+LLM_VERIFY_MULTI=0
+LLM_VERIFY_MULTI_MANY_CHOICES=0
+LLM_VERIFY_MAX_TOKENS=320
+
+RAG_MAX_CONTEXT_CHARS=12000
+RAG_FULL_PASSAGE_CHARS=12000
+RAG_BM25_MAX_CHARS=10000
+RAG_BM25_TOP_K=12
+
+LLM_USE_RAG_EVIDENCE=1
+LLM_RAG_EVIDENCE_MAX_TOKENS=512
+
+LLAMA_N_CTX=4096
+# LLAMA_N_GPU_LAYERS=-1
 ```
 
-| Biến | Ý nghĩa |
-|------|---------|
-| `HF_MODEL_ID` | Repo GGUF trên HuggingFace |
-| `GGUF_FILE` | Tên file `.gguf` cụ thể trong repo |
-| `HF_LOCAL_DIR` | Cache local (mặc định `model/`) |
-| `LLM_MAX_NEW_TOKENS` | Trần token sinh |
-| `LLM_ANSWER_MAX_TOKENS` | Token bước trả lời |
-| `LLM_USE_LLM_ROUTE` | `0` = route heuristic (nhanh), `1` = LLM route |
-| `LLM_USE_POT_SCIENCE` | `1` = dùng Program-of-Thought/Python cho câu science phù hợp |
-| `LLM_USE_COT_SHOULD_CORRECT` | `1` = dùng CoT 2 bước cho should_correct |
-| `LLM_USE_COT_MULTI` | `1` = dùng CoT có điều kiện cho multi_domain khó |
-| `LLM_POT_MAX_TOKENS`, `LLM_COT_MAX_TOKENS` | Token cho nhánh reasoning, không bị giới hạn bởi `LLM_MAX_NEW_TOKENS` |
-| `LLM_USE_ANSWER_VERIFIER` | `1` = kiểm tra lại đáp án LLM cho RAG/should_correct/multi_domain trước khi chốt |
-| `LLM_VERIFY_MULTI` | `0` = tắt verifier cho multi_domain theo mặc định; bật `1` khi muốn kiểm thử |
-| `LLM_USE_RAG_EVIDENCE` | `1` = dùng nhánh trích evidence riêng cho RAG trước khi chốt đáp án |
-| `LLM_USE_PUBLIC_KNOWN_PATTERNS` | `0` = tắt rule bám public test; chỉ bật `1` khi debug public |
-| `LLAMA_N_GPU_LAYERS` | `-1` = all GPU, `0` = CPU only |
-| `LLAMA_N_CTX` | Context window (mặc định `4096`) |
+Trong Docker image, `HF_LOCAL_DIR` được set về `/app/model` và model GGUF được bake sẵn vào image, nên BTC không cần mount model hoặc tải model khi chấm.
 
-LLM dùng **greedy** (`temperature=0`), deterministic.
+## Repo
 
-Debug (tùy chọn): `TRACE_LLM=1`, `DEBUG_LLM=1`, `TRACE_QID=test_0001`
-
----
-
-## Chế độ `--mode`
-
-| Mode | Mô tả |
-|------|--------|
-| `heuristic` | Không load model |
-| `llm` | Bắt buộc `HF_MODEL_ID` + `GGUF_FILE` |
-| `auto` | Có model trong env → LLM, không → heuristic |
-
-## Định dạng I/O
-
-**Local dev — JSON:**
-
-```json
-[{"qid": "test_0001", "question": "...", "choices": ["A text", "B text"]}]
-```
-
-**Output (local & BTC):**
-
-```csv
-qid,answer
-test_0001,A
-```
-
-## CLI `run.py`
-
-| Tham số | Mặc định (local) |
-|---------|------------------|
-| `--input` | `data/public-test_1780368312.json` |
-| `--output` | `output/pred.csv` |
-| `--mode` | `auto` |
-| `--workers` | ≤8 (LLM tự ép `1`) |
-| `--trace-output` | (optional) JSONL debug |
-| `--wrong-output` | (optional) JSONL câu fallback/sai |
-
----
-
-## Nộp BTC (Docker)
-
-### Checklist ban tổ chức
-
-| Yêu cầu | Repo |
-|--------|------|
-| Image trên Docker Hub | Team `docker push` |
-| Entry-point đọc `/data/public_test.csv` hoặc `private_test.csv` | `docker_entry.sh` |
-| Ghi `/output/pred.csv` (`qid`, `answer`) | `run.py` |
-| Source + reproduce | README + lệnh dưới |
-| Thuyết minh | `PHUONG_PHAP.md` |
-
-### Chuẩn bị trước `docker build`
-
-1. Có `.env` ở root (copy từ `.env.example`) — được copy vào image lúc build.
-2. Thư mục `model/` **đã có file `.gguf`** (chạy `./run.sh` một lần nếu còn trống):
-
-```bash
-./run.sh
-ls model/*.gguf   # phải có file GGUF
-```
-
-Image bake sẵn GGUF model tại `/app/model` — BTC **không** cần mount `model/` hay tải HuggingFace.
-
-### Build, push, chạy thử
-
-```bash
-docker build -t YOUR_USER/vn-hackathon-mcq:latest .
-docker push YOUR_USER/vn-hackathon-mcq:latest
-
-docker run --rm \
-  -v "$(pwd)/data:/data:ro" \
-  -v "$(pwd)/output:/output" \
-  YOUR_USER/vn-hackathon-mcq:latest
-
-head output/pred.csv
-```
-
-Trong container: `COMPETITION=1`, `source /app/.env`, đọc CSV trong `/data`, ghi `/output/pred.csv`.
-
-**Input CSV BTC** — cột bắt buộc `qid`, `question`, và một trong:
-
-- `A`, `B`, `C`, `D`, …
-- hoặc `choices` (JSON array hoặc chuỗi phân tách `|`)
-
-Heuristic không LLM khi chấm (nếu cần): `docker run -e PIPELINE_MODE=heuristic ...`
-
-### Đồng bộ config khi nộp
-
-- Chạy thử: chỉnh `.env`
-- Nộp image: cùng giá trị trong `.env` (build copy vào image) và/hoặc `ENV` trong `Dockerfile`
-- Sau khi đổi config → **build lại** image
-
----
-
-## Cấu trúc repo
+Các file chính:
 
 ```text
-├── run.sh / run.py          # Chạy local
-├── docker_entry.sh          # Entry-point BTC
-├── Dockerfile
-├── pipeline.py / router.py / prompts.py
-├── domains/                 # rag, math, multi_domain, …
-├── utils/                   # preprocess, bm25, llm (llama.cpp), input_loader
-├── data/                    # JSON test (local, gitignore)
-├── model/                   # GGUF cache (gitignore, bake vào image)
-├── output/                  # pred.csv
-└── PHUONG_PHAP.md
+Dockerfile
+scripts/docker_entry.sh
+run.py
+pipeline.py
+router.py
+prompts.py
+domains/
+utils/
+download_model.py
+.env.example
 ```
 
----
-
-## Lỗi thường gặp
-
-| Lỗi | Cách xử lý |
-|-----|------------|
-| `No input in /data` | Đang `COMPETITION=1` thiếu CSV — local dùng `./run.sh` hoặc `--input` JSON |
-| `LLM mode requires local model id` | Thêm `HF_MODEL_ID` vào `.env` hoặc `./run.sh heuristic` |
-| `model/ không có file .gguf` khi `docker build` | Chạy `./run.sh` trước để tải GGUF |
-| `llama_cpp` build lỗi | Cài `cmake` và `build-essential` (Linux) hoặc Xcode CLI tools (macOS) |
-| JSON answer bị cắt | Tăng `LLM_ANSWER_MAX_TOKENS` (vd. 64) trong `.env` |
-
----
-
-## Tài liệu thêm
-
-- [`report.md`](report.md) — implementation (EN)
-- [`pipeline_report.md`](pipeline_report.md) — thiết kế pipeline
+Entrypoint Docker là `scripts/docker_entry.sh`, chạy `run.py` với `COMPETITION=1`, `DATA_DIR=/data`, `OUTPUT_DIR=/output`, và `PIPELINE_MODE=llm`.

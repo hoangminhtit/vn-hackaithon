@@ -1,4 +1,3 @@
-import os
 import re
 from typing import Dict, Optional
 
@@ -6,10 +5,6 @@ from domains.common import lexical_best_choice, normalize_for_match
 
 
 NUMBER_RE = re.compile(r"[-+]?\d+(?:[.,]\d+)*")
-
-
-def _public_patterns_enabled() -> bool:
-    return os.getenv("LLM_USE_PUBLIC_KNOWN_PATTERNS", "0").strip() == "1"
 
 
 def _parse_vn_number(raw: str) -> Optional[float]:
@@ -703,40 +698,6 @@ def _solve_debt_interest_amount(question: str, choices: Dict[str, str]) -> Optio
     return _pick_closest_numeric_choice(choices, target)
 
 
-def _solve_compound_amount_two_years(question: str, choices: Dict[str, str]) -> Optional[str]:
-    if not _public_patterns_enabled():
-        return None
-    qn = normalize_for_match(question)
-    if "khoản nợ" not in qn or "lãi suất" not in qn or "cuối 2 năm" not in qn:
-        return None
-    return _pick_closest_numeric_choice(choices, 89600.0)
-
-
-def _solve_kennie_printer_book_value(question: str, choices: Dict[str, str]) -> Optional[str]:
-    if not _public_patterns_enabled():
-        return None
-    qn = normalize_for_match(question)
-    if "kennie" not in qn or "máy in" not in qn or "giá trị sổ sách" not in qn:
-        return None
-    for label, text in choices.items():
-        normalized = normalize_for_match(text)
-        if "29 200" in normalized and "1 800" in normalized:
-            return label
-    return None
-
-
-def _solve_malformed_triangular_eigenvalues(question: str, choices: Dict[str, str]) -> Optional[str]:
-    if not _public_patterns_enabled():
-        return None
-    qn = normalize_for_match(question)
-    if "giá trị riêng" not in qn or "toán tử tuyến tính" not in qn or "1 0" not in qn or "2 1" not in qn or "0 2" not in qn:
-        return None
-    for label, text in choices.items():
-        if "2, 2 và 2" in text or "2,2 và 2" in text:
-            return label
-    return None
-
-
 _SPECIALIZED_SOLVERS = (
     _solve_linear_decay,
     _solve_midpoint_elasticity,
@@ -780,9 +741,6 @@ _SPECIALIZED_SOLVERS = (
     _solve_three_phase_three_wire_wattmeter,
     _solve_sulfur_oxide_percent,
     _solve_debt_interest_amount,
-    _solve_compound_amount_two_years,
-    _solve_kennie_printer_book_value,
-    _solve_malformed_triangular_eigenvalues,
 )
 
 

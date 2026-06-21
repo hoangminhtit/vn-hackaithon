@@ -96,11 +96,6 @@ def _llm_answer_or_fallback(
         if specialized:
             return specialized, "[HEURISTIC_SPECIALIZED_MULTI]", False
 
-    if domain == "should_correct":
-        specialized = should_correct.solve_specialized(processed["question"], processed["choices"])
-        if specialized:
-            return specialized, "[HEURISTIC_SPECIALIZED_SHOULD_CORRECT]", False
-
     if domain == "science" and should_use_pot_for_science(processed["question"], processed["choices"]):
         try:
             pot_answer, pot_trace = solve_science_with_pot(
