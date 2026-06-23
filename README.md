@@ -10,41 +10,6 @@ Image nộp lên Docker Hub: https://hub.docker.com/r/nguyenvanhung777/vn-hackat
 nguyenvanhung777/vn-hackathon-mcq:latest
 ```
 
-## Entry-Point Contract
-
-Container được thiết kế đúng theo yêu cầu đầu ra của BTC:
-
-- Input được mount vào `/data`.
-- Entrypoint tự tìm `/data/public_test.csv`; nếu không có thì dùng `/data/private_test.csv`.
-- Output được ghi vào `/output/pred.csv`.
-- File output có đúng hai cột:
-
-```csv
-qid,answer
-```
-
-Trong đó `answer` là một trong `A/B/C/D` hoặc các nhãn lựa chọn hợp lệ nếu đề có nhiều hơn 4 lựa chọn.
-
-Input CSV cần có các cột bắt buộc:
-
-```text
-qid,question
-```
-
-Và một trong hai cách biểu diễn lựa chọn:
-
-```text
-A,B,C,D,...
-```
-
-hoặc:
-
-```text
-choices
-```
-
-Trong đó `choices` là JSON array hoặc chuỗi phân tách bằng `|`.
-
 ## Reproduce
 
 Có 2 cách chạy lại kết quả: chạy bằng script trong repo hoặc chạy bằng Docker container.
@@ -62,13 +27,13 @@ output/
 Chạy pipeline bằng script:
 
 ```bash
-bash scripts/run.sh llm data/public_test.csv output/pred.csv
+bash scripts/run.sh llm data/public-test_1780368312.json output/pred.csv
 ```
 
 Nếu dùng private test:
 
 ```bash
-bash scripts/run.sh llm data/private_test.csv output/pred.csv
+bash scripts/run.sh llm data/private_test.json output/pred.csv
 ```
 
 Kiểm tra kết quả:
@@ -220,4 +185,4 @@ download_model.py
 .env.example
 ```
 
-Entrypoint Docker là `scripts/docker_entry.sh`, chạy `run.py` với `COMPETITION=1`, `DATA_DIR=/data`, `OUTPUT_DIR=/output`, và `PIPELINE_MODE=llm`.
+<!-- Entrypoint Docker là `scripts/docker_entry.sh`, chạy `run.py` với `COMPETITION=1`, `DATA_DIR=/data`, `OUTPUT_DIR=/output`, và `PIPELINE_MODE=llm`. -->
