@@ -24,6 +24,10 @@ Environment overrides:
   OUTPUT          Output CSV path.
   WORKERS         Worker count. LLM mode should use 1.
   PYTHON          Python executable. Defaults to project venv, py -3, python3, then python.
+  ENV_FILE        Env file path. Defaults to .env.
+  ENV_EXAMPLE_FILE
+                  Template env file path. Defaults to .env.example.
+  AUTO_COPY_ENV   Copy ENV_EXAMPLE_FILE to ENV_FILE when missing. Defaults to 1.
   LLM_AUTO_INSTALL_LLAMA_CPP
                   Install llama-cpp-python automatically for llm/auto mode. Defaults to 1.
   LLAMA_CPP_FORCE_REINSTALL
@@ -66,10 +70,43 @@ find_kaggle_input() {
   return 1
 }
 
+ensure_env_file() {
+  local env_file="${ENV_FILE:-.env}"
+  local example_file="${ENV_EXAMPLE_FILE:-.env.example}"
+
+  if [[ ! -f "$env_file" && "${AUTO_COPY_ENV:-1}" != "0" && -f "$example_file" ]]; then
+    cp "$example_file" "$env_file"
+    echo "==> created $env_file from $example_file"
+  fi
+
+  if [[ ! -f "$env_file" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" == \#* || "$line" != *=* ]] && continue
+    local key="${line%%=*}"
+    local value="${line#*=}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    if [[ ! -v "$key" ]]; then
+      if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+        value="${value:1:${#value}-2}"
+      elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+        value="${value:1:${#value}-2}"
+      fi
+      export "$key=$value"
+    fi
+  done < "$env_file"
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
 fi
+
+cd "$ROOT"
+ensure_env_file
 
 PRESET="${1:-}"
 if [[ "$PRESET" == "kaggle" ]]; then
@@ -96,8 +133,6 @@ case "$MODE" in
     exit 1
     ;;
 esac
-
-cd "$ROOT"
 
 # Local/Kaggle direct runs should not use the Docker competition input resolver.
 if [[ "${RUN_COMPETITION:-0}" != "1" ]]; then
