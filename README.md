@@ -1,50 +1,31 @@
-# VN Hackathon MCQ Solver
+# VIETNAMESE STUDENT HACKAITHON 2026
 
-Submission cho BTC HackAIthon Bảng C Innovator.
+## HM_Innovation - Bảng C Innovator
 
 **Entry-point:** `predict.py` → đọc `/code/private_test.json` → sinh `submission.csv` + `submission_time.csv` vào `/code/`.
 
 ## Docker Hub
 
-Image nộp lên Docker Hub: https://hub.docker.com/r/nguyenvanhung777/vn-hackathon-mcq
+Image nộp lên Docker Hub: https://hub.docker.com/repository/docker/hoangminhtit/hm_innovation_submission/general
 
-```text
-nguyenvanhung777/vn-hackathon-mcq:latest
-```
+---
+
+## Table of Contents
+
+- [Pipeline Flow](#pipeline-flow)
+- [Data Processing](#data-processing)
+- [Resource Initialization](#resource-initialization)
+- [Reproduce](#reproduce)
+- [Chạy local bằng `scripts/run.sh`](#cách-1-chạy-local-bằng-scriptsrunsh)
+- [Chạy bằng Docker](#cách-2-chạy-bằng-docker)
+- [Cấu Hình](#cấu-hình)
+- [Cấu Trúc Repo](#cấu-trúc-repo)
 
 ---
 
 ## Pipeline Flow
 
-```
-private_test.json
-      │
-      ▼
- predict.py  ──── read_items() ────► [list câu hỏi]
-      │
-      │  for item in test:          ← vòng lặp tuần tự theo yêu cầu BTC
-      │    t0 = time.time()
-      ▼
- pipeline.process_question(item)
-      │
-      ├─► router.route_question()   ← phân loại domain (rag / math / multi_domain / ...)
-      │         │
-      │         ├─► domain = "rag"         → BM25 retrieve + RAG evidence LLM
-      │         ├─► domain = "math"        → PoT (Program of Thought, chạy Python sandbox)
-      │         ├─► domain = "should_correct" → CoT reasoning
-      │         └─► domain = "multi_domain"   → CoT + Answer Verifier
-      │
-      ├─► llm_client.chat()         ← Qwen3.5-4B-Q4_K_M.gguf via llama-cpp-python
-      │
-      └─► parse_answer()            ← trích xuất A/B/C/D từ raw output
-      │
-      ▼
-    elapsed = time.time() - t0
-      │
-      ▼
-submission.csv          (qid, answer)
-submission_time.csv     (qid, answer, time)
-```
+<img src="./assets/proposed_pipeline.png" width="800" />
 
 ---
 
@@ -70,8 +51,6 @@ Nếu cần tải model thủ công (trước khi build):
 
 ```bash
 python download_model.py
-# hoặc
-huggingface-cli download unsloth/Qwen3.5-4B-GGUF Qwen3.5-4B-Q4_K_M.gguf --local-dir model/
 ```
 
 ---
@@ -81,11 +60,11 @@ huggingface-cli download unsloth/Qwen3.5-4B-GGUF Qwen3.5-4B-Q4_K_M.gguf --local-
 ### Cách 1: Chạy local bằng `scripts/run.sh`
 
 ```bash
-# Mặc định: llm mode, input = data/public-test_1780368312.json, output vào output/
-bash scripts/run.sh
+mkdir -p output data
+# Đảm bảo private_test.json nằm ở data/private_test.json
 
 # Chỉ định rõ input và output dir
-bash scripts/run.sh llm data/public-test_1780368312.json output/
+bash scripts/run.sh llm data/public-test.json output/
 
 # Private test
 bash scripts/run.sh llm data/private_test.json output/
@@ -97,15 +76,52 @@ output/submission.csv          # qid,answer
 output/submission_time.csv     # qid,answer,time
 ```
 
-### Cách 2: Chạy bằng Docker (giống cách BTC chấm)
+### Cách 2: Chạy bằng Docker
+
+Build image sau khi đã tải model vào `model/`:
 
 ```bash
-# Đảm bảo private_test.json nằm ở data/private_test.json
-docker run --rm --gpus all \
-  -v "$(pwd)/data/private_test.json:/code/private_test.json:ro" \
-  -v "$(pwd)/output:/code/output" \
-  nguyenvanhung777/vn-hackathon-mcq:latest
+python download_model.py
+docker build -t hm_innovation_submission .
 ```
+
+Chạy bằng Bash/Linux/macOS:
+
+```bash
+mkdir -p output
+
+docker run --rm --gpus all \
+  -e OUTPUT_DIR=/code/output \
+  -v "$(pwd)/public_test.json:/code/public_test.json:ro" \
+  -v "$(pwd)/output:/code/output" \
+  hm_innovation_submission
+```
+
+Chạy bằng Git Bash trên Windows:
+
+```bash
+mkdir -p output
+
+MSYS_NO_PATHCONV=1 docker run --rm --gpus all \
+  -e OUTPUT_DIR=/code/output \
+  -v "$(pwd)/public_test.json:/code/public_test.json:ro" \
+  -v "$(pwd)/output:/code/output" \
+  hm_innovation_submission
+```
+
+Chạy bằng PowerShell trên Windows:
+
+```powershell
+New-Item -ItemType Directory -Force output | Out-Null
+
+docker run --rm --gpus all `
+  -e OUTPUT_DIR=/code/output `
+  -v "${PWD}/public_test.json:/code/public_test.json:ro" `
+  -v "${PWD}/output:/code/output" `
+  hm_innovation_submission
+```
+
+Khi chạy private test, đổi `public_test.json` thành `private_test.json`.
 
 Kiểm tra output:
 
@@ -152,7 +168,7 @@ LLAMA_N_CTX=4096
 ## Cấu Trúc Repo
 
 ```text
-Dockerfile                    ← base nvidia/cuda:12.2.0-devel-ubuntu20.04
+Dockerfile                    ← base nvidia/cuda:12.2.0-devel-ubuntu22.04
 inference.sh                  ← CMD entry-point BTC (gọi predict.py)
 predict.py                    ← main entry-point: đọc JSON, chạy pipeline, ghi 2 CSV
 pipeline.py                   ← orchestrator pipeline
