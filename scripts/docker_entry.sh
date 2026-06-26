@@ -1,31 +1,32 @@
 #!/usr/bin/env bash
-# Entry-point BTC: /data/public_test.csv hoặc /data/private_test.csv → /output/pred.csv
+# Entry-point phụ (local/Kaggle): gọi predict.py với path tuỳ chỉnh.
+# Entry-point chính BTC vẫn là inference.sh ở root (CMD trong Dockerfile).
 set -euo pipefail
 
-cd /app
+cd /code
 
-export COMPETITION=1
-export DATA_DIR="${DATA_DIR:-/data}"
-export OUTPUT_DIR="${OUTPUT_DIR:-/output}"
-
-if [[ ! -f /app/.env && "${AUTO_COPY_ENV:-1}" != "0" && -f /app/.env.example ]]; then
-  cp /app/.env.example /app/.env
-  echo "==> created /app/.env from /app/.env.example"
+if [[ ! -f /code/.env && "${AUTO_COPY_ENV:-1}" != "0" && -f /code/.env.example ]]; then
+  cp /code/.env.example /code/.env
+  echo "==> created /code/.env from /code/.env.example"
 fi
 
-if [[ -f /app/.env ]]; then
+if [[ -f /code/.env ]]; then
   set -a
   # shellcheck disable=SC1091
-  source /app/.env
+  source /code/.env
   set +a
 fi
 
 MODE="${PIPELINE_MODE:-llm}"
+INPUT="${INPUT:-/code/private_test.json}"
+OUTPUT_DIR="${OUTPUT_DIR:-/code}"
+
 mkdir -p "$OUTPUT_DIR"
 
-echo "==> Competition entry-point"
-echo "    DATA_DIR=$DATA_DIR OUTPUT_DIR=$OUTPUT_DIR MODE=$MODE"
+echo "==> Competition entry-point (scripts/docker_entry.sh)"
+echo "    INPUT=$INPUT OUTPUT_DIR=$OUTPUT_DIR MODE=$MODE"
 
-exec python3 run.py \
-  --mode "$MODE" \
-  --workers 1
+exec python3 predict.py \
+  --input "$INPUT" \
+  --output-dir "$OUTPUT_DIR" \
+  --mode "$MODE"

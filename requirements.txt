@@ -1,4 +1,10 @@
-huggingface_hub>=0.25.0
-sentencepiece>=0.2.0
-sympy>=1.12
+# ── Third-party dependencies (không bao gồm llama-cpp-python — build riêng trong Dockerfile) ──
 
+# Tải GGUF model từ HuggingFace Hub
+huggingface_hub>=0.25.0,<2.0.0
+
+# Tokenizer (dùng bởi llama-cpp-python / sentencepiece models)
+sentencepiece>=0.2.0
+
+# Toán học / khoa học (dùng trong PoT reasoning sandbox)
+sympy>=1.12

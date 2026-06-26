@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Run the MCQ pipeline from any working directory.
+# Entry-point: predict.py → sinh submission.csv + submission_time.csv vào OUTPUT_DIR.
 # Examples:
 #   bash scripts/run.sh
 #   bash scripts/run.sh heuristic
-#   bash scripts/run.sh llm data/public-test_1780368312.json output/pred.csv
+#   bash scripts/run.sh llm data/public-test_1780368312.json output/
 #   bash scripts/run.sh kaggle
-#   INPUT=/path/test.json OUTPUT=/path/pred.csv MODE=llm WORKERS=1 bash scripts/run.sh
+#   INPUT=/path/test.json OUTPUT_DIR=output/ MODE=llm bash scripts/run.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,15 +15,16 @@ ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 usage() {
   cat <<'EOF'
 Usage:
-  bash scripts/run.sh [llm|heuristic|auto] [input.json|input.csv] [output.csv] [workers]
-  bash scripts/run.sh kaggle [input.json|input.csv] [output.csv]
+  bash scripts/run.sh [llm|heuristic|auto] [input.json|input.csv] [output_dir/]
+  bash scripts/run.sh kaggle [input.json|input.csv] [output_dir/]
+
+  Output: <output_dir>/submission.csv + <output_dir>/submission_time.csv
 
 Environment overrides:
   PROJECT_ROOT    Project directory. Defaults to the parent of scripts/.
   MODE            llm | heuristic | auto. Positional mode has priority.
   INPUT           Input JSON/CSV path.
-  OUTPUT          Output CSV path.
-  WORKERS         Worker count. LLM mode should use 1.
+  OUTPUT_DIR      Output directory (predict.py ghi submission.csv + submission_time.csv vào đây).
   PYTHON          Python executable. Defaults to project venv, py -3, python3, then python.
   ENV_FILE        Env file path. Defaults to .env.
   ENV_EXAMPLE_FILE
@@ -113,16 +115,14 @@ if [[ "$PRESET" == "kaggle" ]]; then
   shift
   MODE="${MODE:-llm}"
   INPUT="${1:-${INPUT:-${KAGGLE_INPUT:-}}}"
-  OUTPUT="${2:-${OUTPUT:-output/pred.csv}}"
-  WORKERS="${3:-${WORKERS:-1}}"
+  OUTPUT_DIR="${2:-${OUTPUT_DIR:-output}}"
   if [[ -z "$INPUT" ]]; then
     INPUT="$(find_kaggle_input || true)"
   fi
 else
   MODE="${1:-${MODE:-${PIPELINE_MODE:-llm}}}"
   INPUT="${2:-${INPUT:-data/public-test_1780368312.json}}"
-  OUTPUT="${3:-${OUTPUT:-output/pred.csv}}"
-  WORKERS="${4:-${WORKERS:-1}}"
+  OUTPUT_DIR="${3:-${OUTPUT_DIR:-output}}"
 fi
 
 case "$MODE" in
@@ -234,15 +234,14 @@ fi
 
 ensure_llama_cpp
 
-mkdir -p "$(dirname "$OUTPUT")"
+mkdir -p "$OUTPUT_DIR"
 
-echo "==> root=$ROOT"
-echo "==> mode=$MODE workers=$WORKERS"
-echo "==> input=$INPUT"
-echo "==> output=$OUTPUT"
+echo "===> root=$ROOT"
+echo "===> mode=$MODE"
+echo "===> input=$INPUT"
+echo "===> output_dir=$OUTPUT_DIR  (sinh submission.csv + submission_time.csv)"
 
-exec "${PYTHON_CMD[@]}" run.py \
+exec "${PYTHON_CMD[@]}" predict.py \
   --input "$INPUT" \
-  --output "$OUTPUT" \
-  --mode "$MODE" \
-  --workers "$WORKERS"
+  --output-dir "$OUTPUT_DIR" \
+  --mode "$MODE"
