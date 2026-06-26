@@ -1,6 +1,11 @@
-# VIETNAMESE STUDENT HACKAITHON 2026
+<h2 align="center">VIETNAMESE STUDENT HACKAITHON 2026 - Bảng C Innovator</h2>
 
-## HM_Innovation - Bảng C Innovator
+**Đội thi — HM_Innovation**
+
+1. Nguyễn Văn Hùng - **Trưởng nhóm**
+2. Võ Lê Hoàng Minh - Thành viên
+
+----
 
 **Entry-point:** `predict.py` → đọc `/code/private_test.json` → sinh `submission.csv` + `submission_time.csv` vào `/code/`.
 
