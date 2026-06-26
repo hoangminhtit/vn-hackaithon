@@ -91,7 +91,8 @@ ensure_env_file() {
     local key="${line%%=*}"
     local value="${line#*=}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
-    if [[ ! -v "$key" ]]; then
+    # Kiểm tra biến đã được định nghĩa chưa theo cách tương thích ngược với bash cũ
+    if [ -z "${!key+x}" ]; then
       if [[ "$value" == \"*\" && "$value" == *\" ]]; then
         value="${value:1:${#value}-2}"
       elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
