@@ -5,7 +5,8 @@ output/
 results/
 .vscode/
 .DS_Store
-model/
+model/*
+!model/.gitkeep
 .venv/
 .ruff_cache/
 .ipynb_checkpoints/

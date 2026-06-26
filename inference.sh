@@ -10,6 +10,7 @@ if [[ ! -f /code/.env && "${AUTO_COPY_ENV:-1}" != "0" && -f /code/.env.example ]
 fi
 
 if [[ -f /code/.env ]]; then
+  sed -i 's/\r$//' /code/.env
   set -a
   # shellcheck disable=SC1091
   source /code/.env
@@ -18,5 +19,6 @@ fi
 
 echo "==> Competition entry-point"
 echo "    PIPELINE_MODE=${PIPELINE_MODE:-llm}"
+echo "    OUTPUT_DIR=${OUTPUT_DIR:-/code}"
 
-exec python3 predict.py
+exec python3 predict.py --output-dir "${OUTPUT_DIR:-/code}"
