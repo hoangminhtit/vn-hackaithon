@@ -103,7 +103,7 @@ output/submission_time.csv     # qid,answer,time
 # Đảm bảo private_test.json nằm ở data/private_test.json
 docker run --rm --gpus all \
   -v "$(pwd)/data/private_test.json:/code/private_test.json:ro" \
-  -v "$(pwd)/output:/code" \
+  -v "$(pwd)/output:/code/output" \
   nguyenvanhung777/vn-hackathon-mcq:latest
 ```
 

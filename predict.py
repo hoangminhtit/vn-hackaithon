@@ -17,6 +17,7 @@ import csv
 import json
 import os
 import time
+import re
 from typing import Dict, List, Optional
 
 from pipeline import process_question
@@ -44,31 +45,50 @@ def load_dotenv_file(path: str = ".env") -> None:
 
 
 def _resolve_input(cli_input: Optional[str]) -> str:
-    """Tìm file đầu vào: ưu tiên CLI arg, sau đó /code/private_test.{json,csv},
-    cuối cùng fallback về file test local khi dev."""
-    if cli_input:
+    """Tự động quét tìm file dữ liệu đầu vào (.json hoặc .csv) trong môi trường Docker/Kaggle/Local."""
+    if cli_input and os.path.isfile(cli_input):
         return cli_input
 
-    # Trong Docker BTC — thư mục làm việc là /code
-    for candidate in [
-        "/code/private_test.json",
-        "/code/private_test.csv",
-    ]:
-        if os.path.isfile(candidate):
-            return candidate
+    # 1. Tìm các file đầu vào được mount trực tiếp ở các thư mục hệ thống chuẩn của cuộc thi
+    search_dirs = ["/data", "/code", "data", "."]
+    
+    # Ưu tiên tìm các file có từ khóa test/public/private
+    patterns = [r"test", r"public", r"private", r"val"]
+    
+    candidates = []
+    for s_dir in search_dirs:
+        if not os.path.isdir(s_dir):
+            continue
+        try:
+            for f in os.listdir(s_dir):
+                f_lower = f.lower()
+                # Chỉ lấy file .json hoặc .csv
+                if not (f_lower.endswith(".json") or f_lower.endswith(".csv")):
+                    continue
+                # Tránh các file kết quả và file config
+                if "submission" in f_lower or f_lower.startswith(".") or f_lower == "requirements.txt" or f_lower == "few-shot.json":
+                    continue
+                
+                full_path = os.path.join(s_dir, f)
+                if os.path.isfile(full_path):
+                    candidates.append(full_path)
+        except Exception:
+            pass
 
-    # Dev/local fallback
-    for candidate in [
-        "data/public-test_1780368312.json",
-        "data/private_test.json",
-        "data/private_test.csv",
-    ]:
-        if os.path.isfile(candidate):
-            return candidate
+    # 2. Xếp thứ tự ưu tiên: Ưu tiên file có chứa các từ khóa trong 'patterns'
+    for pattern in patterns:
+        for c in candidates:
+            if re.search(pattern, os.path.basename(c).lower()):
+                print(f"[INPUT] Tự động chọn file khớp pattern '{pattern}': {c}")
+                return c
+
+    # 3. Nếu không khớp pattern nào cụ thể, chọn file .json hoặc .csv đầu tiên tìm thấy
+    if candidates:
+        print(f"[INPUT] Tự động chọn file đầu tiên tìm thấy: {candidates[0]}")
+        return candidates[0]
 
     raise FileNotFoundError(
-        "Không tìm thấy file đầu vào. "
-        "Truyền --input <path> hoặc đặt file vào /code/private_test.json"
+        "Không tìm thấy bất kỳ file dữ liệu đầu vào (.json hoặc .csv) nào trong /data, /code hoặc thư mục hiện tại."
     )
 
 
