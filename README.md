@@ -11,7 +11,7 @@
 
 ## Docker Hub
 
-Image nộp lên Docker Hub: https://hub.docker.com/repository/docker/hoangminhtit/hm_innovation_submission/general
+Image nộp lên Docker Hub: https://hub.docker.com/r/hoangminhtit/hm_innovation_submission
 
 ---
 
