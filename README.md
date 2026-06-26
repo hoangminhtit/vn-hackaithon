@@ -99,7 +99,7 @@ docker run --rm --gpus all \
   -e OUTPUT_DIR=/code/output \
   -v "$(pwd)/public_test.json:/code/public_test.json:ro" \
   -v "$(pwd)/output:/code/output" \
-  hm_innovation_submission
+  hoangminhtit/hm_innovation_submission:latest
 ```
 
 Chạy bằng Git Bash trên Windows:
@@ -111,7 +111,7 @@ MSYS_NO_PATHCONV=1 docker run --rm --gpus all \
   -e OUTPUT_DIR=/code/output \
   -v "$(pwd)/public_test.json:/code/public_test.json:ro" \
   -v "$(pwd)/output:/code/output" \
-  hm_innovation_submission
+  hoangminhtit/hm_innovation_submission:latest
 ```
 
 Chạy bằng PowerShell trên Windows:
@@ -123,7 +123,7 @@ docker run --rm --gpus all `
   -e OUTPUT_DIR=/code/output `
   -v "${PWD}/public_test.json:/code/public_test.json:ro" `
   -v "${PWD}/output:/code/output" `
-  hm_innovation_submission
+  hoangminhtit/hm_innovation_submission:latest
 ```
 
 Khi chạy private test, đổi `public_test.json` thành `private_test.json`.
