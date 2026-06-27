@@ -30,6 +30,8 @@ Image nộp lên Docker Hub: https://hub.docker.com/r/hoangminhtit/hm_innovation
 
 ## Pipeline Flow
 
+Mô tả chi tiết tại ([solution.md](solution.md)).
+
 <img src="./assets/proposed_pipeline.png" width="800" />
 
 ---
