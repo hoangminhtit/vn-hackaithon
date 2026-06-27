@@ -83,13 +83,6 @@ output/submission_time.csv     # qid,answer,time
 
 ### Cách 2: Chạy bằng Docker
 
-Build image sau khi đã tải model vào `model/`:
-
-```bash
-python download_model.py
-docker build -t hm_innovation_submission .
-```
-
 Chạy bằng Bash/Linux/macOS:
 
 ```bash
@@ -153,20 +146,7 @@ test_0002,C,0.9871
 
 ## Cấu Hình
 
-Các biến môi trường chính (xem `.env.example`):
-
-```env
-HF_MODEL_ID=unsloth/Qwen3.5-4B-GGUF
-GGUF_FILE=Qwen3.5-4B-Q4_K_M.gguf
-HF_LOCAL_DIR=model
-
-LLM_MAX_NEW_TOKENS=16
-LLM_USE_POT_SCIENCE=1        # PoT cho câu toán/khoa học
-LLM_USE_COT_SHOULD_CORRECT=1 # CoT cho domain should_correct
-LLM_USE_RAG_EVIDENCE=1       # RAG evidence retrieval
-LLAMA_N_CTX=4096
-# LLAMA_N_GPU_LAYERS=-1      # bật để full GPU offload
-```
+Các biến môi trường chính (xem [.env.example](.env.example))
 
 ---
 
